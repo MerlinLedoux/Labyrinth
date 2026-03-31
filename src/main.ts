@@ -3,6 +3,7 @@ import type { Cell } from './core/types'
 import type { MazeGenerator } from './generators/generator'
 import { PrimGenerator } from './generators/prim'
 import { RecursiveBacktrackerGenerator } from './generators/recursive-backtracker'
+import { KruskalGenerator } from './generators/kruskal'
 import { BinaryTreeGenerator } from './generators/binary-tree'
 import { HuntAndKillGenerator } from './generators/hunt-and-kill'
 import { RecursiveDivisionGenerator } from './generators/recursive-division'
@@ -26,6 +27,7 @@ const GENERATORS: Record<string, MazeGenerator> = {
   'prim':                 new PrimGenerator(),
   'recursive-backtracker': new RecursiveBacktrackerGenerator(),
   'recursive-division':   new RecursiveDivisionGenerator(),
+  'kruskal':              new KruskalGenerator(), 
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
