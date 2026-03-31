@@ -1,5 +1,6 @@
 import { ALL_WALLS, EAST, NORTH, OPPOSITE, SOUTH, WEST, type Cell, type Direction } from './types'
 
+// In TypeScript we right export in from of everythig we want to use in another file.
 export class Maze {
   readonly rows: number
   readonly cols: number
@@ -7,6 +8,7 @@ export class Maze {
   private walls: Uint8Array[]
 
   constructor(rows: number, cols: number) {
+    // En ts on utilise le mot clé this comme en C++, Java ou C# la ou en python ou Rust on utilise self. 
     this.rows = rows
     this.cols = cols
     // Every cell starts with all 4 walls
@@ -25,6 +27,7 @@ export class Maze {
   addWall(cell: Cell, dir: Direction): void {
     this.walls[cell.row][cell.col] |= dir
     const opposite = OPPOSITE[dir]
+    // La triple égalité c'est légalité strict. Il n'y a pas de convertion de type avant de vérifier si oui ou non il y a une égalité (Contrairement a "=="). C'est quelque chose de propre au ts les autre langage on une égalité strict par défault. Le mieux à faire c'est doublier l'éxistance de "==" et de toujours utliser "===".
     const dr = dir === NORTH ? -1 : dir === SOUTH ? 1 : 0
     const dc = dir === EAST  ?  1 : dir === WEST  ? -1 : 0
     const nr = cell.row + dr

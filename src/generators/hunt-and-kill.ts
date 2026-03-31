@@ -8,6 +8,7 @@ import type { MazeGenerator } from './generator'
 //    bottom-right for an unvisited cell that touches a visited one, then
 //    connect them and resume the walk from there.
 export class HuntAndKillGenerator implements MazeGenerator {
+  // Le "*" indique que c'est une fonction génératrice. Une fonction normale retourne une unique valeur et ce termine ici la fonction peut yielder plusieurs valeurset se met en pause entre chaque (pause dans le sens le générateur attend que ton code lui dise de continuit il n'y a pas de notion de temps comme avec un wait cette pose est elle permise par async).
   async *generate(maze: Maze): AsyncGenerator<GeneratorStep> {
     const visited = new Set<number>()
 

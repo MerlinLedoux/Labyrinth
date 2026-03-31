@@ -4,8 +4,8 @@ import type { MazeGenerator } from './generator'
 
 export class RecursiveBacktrackerGenerator implements MazeGenerator {
   async *generate(maze: Maze): AsyncGenerator<GeneratorStep> {
-    const visited = new Set<number>()
-    const stack: Cell[] = []
+    const visited = new Set<number>() // Collection unique garder en mémoire toute les cellules déjà visiter.
+    const stack: Cell[] = [] // Tableau d'array pour simuler une pile empile les cellules visiter pour que quand l'algorithme est bloquer il puise utliser cette pile pour retrouver une cellule pour continuer l'exporation.
 
     const startRow = Math.floor(Math.random() * maze.rows)
     const startCol = Math.floor(Math.random() * maze.cols)
