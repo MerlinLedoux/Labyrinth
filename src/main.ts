@@ -1,25 +1,39 @@
 import { Maze } from './core/maze'
 import type { Cell } from './core/types'
+import type { MazeGenerator } from './generators/generator'
 import { PrimGenerator } from './generators/prim'
+import { RecursiveBacktrackerGenerator } from './generators/recursive-backtracker'
+import { BinaryTreeGenerator } from './generators/binary-tree'
+import { HuntAndKillGenerator } from './generators/hunt-and-kill'
+import { RecursiveDivisionGenerator } from './generators/recursive-division'
 import { AStarSolver } from './solvers/astar'
 import { Renderer2D } from './renderer/renderer2d'
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
-const canvas     = document.getElementById('maze-canvas') as HTMLCanvasElement
-const btnGen     = document.getElementById('btn-generate') as HTMLButtonElement
-const btnSolve   = document.getElementById('btn-solve') as HTMLButtonElement
-const sizeSlider = document.getElementById('size-slider') as HTMLInputElement
-const sizeLabel  = document.getElementById('size-label') as HTMLSpanElement
-const speedSlider= document.getElementById('speed-slider') as HTMLInputElement
-const speedLabel = document.getElementById('speed-label') as HTMLSpanElement
+const canvas        = document.getElementById('maze-canvas') as HTMLCanvasElement
+const btnGen        = document.getElementById('btn-generate') as HTMLButtonElement
+const btnSolve      = document.getElementById('btn-solve') as HTMLButtonElement
+const sizeSlider    = document.getElementById('size-slider') as HTMLInputElement
+const sizeLabel     = document.getElementById('size-label') as HTMLSpanElement
+const speedSlider   = document.getElementById('speed-slider') as HTMLInputElement
+const speedLabel    = document.getElementById('speed-label') as HTMLSpanElement
+const genSelect     = document.getElementById('gen-select') as HTMLSelectElement
+
+// ── Generator registry ────────────────────────────────────────────────────────
+const GENERATORS: Record<string, MazeGenerator> = {
+  'binary-tree':          new BinaryTreeGenerator(),
+  'hunt-and-kill':        new HuntAndKillGenerator(),
+  'prim':                 new PrimGenerator(),
+  'recursive-backtracker': new RecursiveBacktrackerGenerator(),
+  'recursive-division':   new RecursiveDivisionGenerator(),
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let maze: Maze | null = null
 let running = false
 
 const renderer = new Renderer2D(canvas)
-const generator = new PrimGenerator()
-const solver    = new AStarSolver()
+const solver   = new AStarSolver()
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function delay(ms: number): Promise<void> {
@@ -27,7 +41,6 @@ function delay(ms: number): Promise<void> {
 }
 
 function getSpeed(): number {
-  // slider: 0 (fast) → 100 (slow). Map to ms: 0 → 0ms, 100 → 100ms
   return Number(speedSlider.value)
 }
 
@@ -37,12 +50,17 @@ function resizeCanvas(): void {
   canvas.height = size
 }
 
+function setControls(disabled: boolean): void {
+  btnGen.disabled    = disabled
+  btnSolve.disabled  = disabled
+  genSelect.disabled = disabled
+}
+
 // ── Generate ──────────────────────────────────────────────────────────────────
 async function generate(): Promise<void> {
   if (running) return
   running = true
-  btnGen.disabled   = true
-  btnSolve.disabled = true
+  setControls(true)
 
   const gridSize = Number(sizeSlider.value)
   maze = new Maze(gridSize, gridSize)
@@ -51,6 +69,8 @@ async function generate(): Promise<void> {
   const frontier = new Set<number>()
   const start: Cell = { row: 0, col: 0 }
   const end: Cell   = { row: gridSize - 1, col: gridSize - 1 }
+
+  const generator = GENERATORS[genSelect.value] ?? GENERATORS['prim']
 
   for await (const step of generator.generate(maze)) {
     if (step.type === 'visit') {
@@ -66,44 +86,42 @@ async function generate(): Promise<void> {
   renderer.drawMaze(maze, { inMaze, start, end })
 
   running = false
-  btnGen.disabled   = false
-  btnSolve.disabled = false
+  setControls(false)
 }
 
 // ── Solve ─────────────────────────────────────────────────────────────────────
 async function solve(): Promise<void> {
   if (!maze || running) return
   running = true
-  btnGen.disabled   = true
-  btnSolve.disabled = true
+  setControls(true)
 
-  const gridSize = maze.rows
+  const currentMaze = maze
+  const gridSize = currentMaze.rows
   const start: Cell = { row: 0, col: 0 }
   const end: Cell   = { row: gridSize - 1, col: gridSize - 1 }
 
   const inMaze = new Set<number>()
-  for (let r = 0; r < maze.rows; r++)
-    for (let c = 0; c < maze.cols; c++)
-      inMaze.add(maze.cellKey({ row: r, col: c }))
+  for (let r = 0; r < currentMaze.rows; r++)
+    for (let c = 0; c < currentMaze.cols; c++)
+      inMaze.add(currentMaze.cellKey({ row: r, col: c }))
 
   const open   = new Set<number>()
-  const closed  = new Set<number>()
+  const closed = new Set<number>()
   let   path: Cell[] = []
 
-  for await (const step of solver.solve(maze, start, end)) {
-    if (step.type === 'open')   open.add(maze.cellKey(step.cell))
-    if (step.type === 'close') { closed.add(maze.cellKey(step.cell)); open.delete(maze.cellKey(step.cell)) }
-    if (step.type === 'path')   path = step.path ?? []
-    if (step.type === 'done')   break
-    renderer.drawMaze(maze, { inMaze, open, closed, path, start, end })
+  for await (const step of solver.solve(currentMaze, start, end)) {
+    if (step.type === 'open')  open.add(currentMaze.cellKey(step.cell))
+    if (step.type === 'close') { closed.add(currentMaze.cellKey(step.cell)); open.delete(currentMaze.cellKey(step.cell)) }
+    if (step.type === 'path')  path = step.path ?? []
+    if (step.type === 'done')  break
+    renderer.drawMaze(currentMaze, { inMaze, open, closed, path, start, end })
     await delay(getSpeed())
   }
 
-  renderer.drawMaze(maze, { inMaze, open, closed, path, start, end })
+  renderer.drawMaze(currentMaze, { inMaze, open, closed, path, start, end })
 
   running = false
-  btnGen.disabled   = false
-  btnSolve.disabled = false
+  setControls(false)
 }
 
 // ── UI events ─────────────────────────────────────────────────────────────────

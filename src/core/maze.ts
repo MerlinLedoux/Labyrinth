@@ -21,6 +21,19 @@ export class Maze {
     return (this.walls[cell.row][cell.col] & dir) !== 0
   }
 
+  /** Add a wall on one side of a cell (and the matching side of the neighbour) */
+  addWall(cell: Cell, dir: Direction): void {
+    this.walls[cell.row][cell.col] |= dir
+    const opposite = OPPOSITE[dir]
+    const dr = dir === NORTH ? -1 : dir === SOUTH ? 1 : 0
+    const dc = dir === EAST  ?  1 : dir === WEST  ? -1 : 0
+    const nr = cell.row + dr
+    const nc = cell.col + dc
+    if (this.inBounds(nr, nc)) {
+      this.walls[nr][nc] |= opposite
+    }
+  }
+
   /** Remove the wall between two adjacent cells */
   removeWall(a: Cell, b: Cell): void {
     const dr = b.row - a.row

@@ -93,6 +93,18 @@
     }
     button:disabled { opacity: 0.4; cursor: not-allowed; }
 
+    select {
+      background: #0f3460;
+      color: #e0e0e0;
+      border: 1px solid #29b6f6;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 0.88rem;
+      cursor: pointer;
+      outline: none;
+    }
+    select:disabled { opacity: 0.4; cursor: not-allowed; }
+
     #btn-generate { background: #29b6f6; color: #0d0d1a; }
     #btn-solve    { background: #ffd600; color: #0d0d1a; }
 
@@ -143,6 +155,17 @@
         <input type="range" id="speed-slider" min="0" max="100" value="20" />
         <span class="value-label" id="speed-label">20 ms</span>
       </div>
+    </div>
+
+    <div class="control-group">
+      <label for="gen-select">Générateur</label>
+      <select id="gen-select">
+        <option value="binary-tree">Binary Tree</option>
+        <option value="hunt-and-kill">Hunt &amp; Kill</option>
+        <option value="prim">Prim</option>
+        <option value="recursive-backtracker">Recursive Backtracker</option>
+        <option value="recursive-division">Recursive Division</option>
+      </select>
     </div>
 
     <button id="btn-generate">Générer</button>
