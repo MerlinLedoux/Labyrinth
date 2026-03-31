@@ -34,17 +34,25 @@ All generators and solvers are `async function*` that **yield** state at each al
 | `binary-tree` | [src/generators/binary-tree.ts](src/generators/binary-tree.ts) | Fast, strong NE diagonal bias |
 | `hunt-and-kill` | [src/generators/hunt-and-kill.ts](src/generators/hunt-and-kill.ts) | Similar to backtracker, iterative |
 | `recursive-division` | [src/generators/recursive-division.ts](src/generators/recursive-division.ts) | Geometric, long straight corridors |
+| `kruskal` | [src/generators/kruskal.ts](src/generators/kruskal.ts) | Random edge merging via Union-Find |
 
 **Solvers available:**
 
 | Key | File | |
 |---|---|---|
-| A* | [src/solvers/astar.ts](src/solvers/astar.ts) | Optimal shortest path |
+| `astar` | [src/solvers/astar.ts](src/solvers/astar.ts) | Optimal shortest path (heuristic-guided) |
+| `bfs` | [src/solvers/bfs.ts](src/solvers/bfs.ts) | Optimal shortest path (breadth-first) |
+| `dfs` | [src/solvers/dfs.ts](src/solvers/dfs.ts) | Fast, non-optimal path (depth-first) |
 
 ### Generator registry
 Generators are registered in the `GENERATORS` map in [src/main.ts](src/main.ts). The UI `<select>` order is controlled by the `<option>` order in [index.html](index.html). The default generator on page load is the first `<option>`.
 
 To add a new generator: implement `MazeGenerator` → add it to `GENERATORS` in `main.ts` → add an `<option>` in `index.html`.
+
+### Solver registry
+Solvers follow the same pattern as generators. They are registered in the `SOLVERS` map in [src/main.ts](src/main.ts) and selected via the `solver-select` dropdown in [index.html](index.html).
+
+To add a new solver: implement `MazeSolver` → add it to `SOLVERS` in `main.ts` → add an `<option>` in `index.html`.
 
 ### Renderer
 [src/renderer/renderer2d.ts](src/renderer/renderer2d.ts) — single `drawMaze(maze, options)` call redraws the full canvas. `options` accepts sets of cell keys for each visual state (`inMaze`, `frontier`, `open`, `closed`, `path`).
@@ -52,4 +60,4 @@ To add a new generator: implement `MazeGenerator` → add it to `GENERATORS` in 
 [src/renderer/renderer3d.ts](src/renderer/renderer3d.ts) — placeholder for future Three.js 3D renderer. The same `Maze` data structure and generator/solver interfaces will be reused.
 
 ### Entry point
-[src/main.ts](src/main.ts) orchestrates everything: reads UI controls (size, speed, generator select), runs the generator/solver `for await` loops, and calls the renderer after each step. Controls are disabled while an animation is running.
+[src/main.ts](src/main.ts) orchestrates everything: reads UI controls (size, speed, generator select, solver select), runs the generator/solver `for await` loops, and calls the renderer after each step. Controls are disabled while an animation is running.

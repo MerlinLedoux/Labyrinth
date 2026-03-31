@@ -4,8 +4,8 @@ A browser-based maze generator and solver built with TypeScript and Vite. Watch 
 
 ## Features
 
-- **5 generation algorithms** — each produces a visually distinct maze style
-- **A\* solver** — finds the shortest path with animated exploration
+- **6 generation algorithms** — each produces a visually distinct maze style
+- **3 solvers** — A*, BFS, and DFS with animated exploration
 - **Fully animated** — watch every step of generation and solving with adjustable speed
 - **Configurable grid size** — from 5×5 to 60×60
 
@@ -27,6 +27,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 | **Binary Tree** | Extremely fast; noticeable north-east diagonal bias |
 | **Hunt & Kill** | Similar to Backtracker but fully iterative |
 | **Recursive Division** | Geometric rooms separated by straight walls |
+| **Kruskal** | Random edge merging via Union-Find |
 
 ## How It Works
 
@@ -47,10 +48,13 @@ src/
 │   ├── recursive-backtracker.ts
 │   ├── binary-tree.ts
 │   ├── hunt-and-kill.ts
-│   └── recursive-division.ts
+│   ├── recursive-division.ts
+│   └── kruskal.ts
 ├── solvers/
 │   ├── solver.ts             # MazeSolver interface
-│   └── astar.ts
+│   ├── astar.ts
+│   ├── bfs.ts
+│   └── dfs.ts
 └── renderer/
     ├── renderer2d.ts         # Canvas 2D rendering
     └── renderer3d.ts         # Placeholder for future Three.js 3D view
@@ -58,8 +62,8 @@ src/
 
 ## Roadmap
 
-- [ ] Additional solvers (BFS, DFS, Wall Follower)
-- [ ] More generation algorithms (Wilson, Kruskal, Eller)
+- [ ] Additional solvers (Wall Follower, Dijkstra)
+- [ ] More generation algorithms (Wilson, Eller)
 - [ ] 3D view with Three.js
 - [ ] Export maze as image or JSON
 
