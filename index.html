@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -142,7 +142,7 @@
 
   <div id="controls">
     <div class="control-group">
-      <label for="size-slider">Taille</label>
+      <label for="size-slider">Size</label>
       <div class="slider-row">
         <input type="range" id="size-slider" min="5" max="60" value="20" />
         <span class="value-label" id="size-label">20×20</span>
@@ -150,7 +150,7 @@
     </div>
 
     <div class="control-group">
-      <label for="speed-slider">Vitesse (délai)</label>
+      <label for="speed-slider">Speed (delay)</label>
       <div class="slider-row">
         <input type="range" id="speed-slider" min="0" max="100" value="20" />
         <span class="value-label" id="speed-label">20 ms</span>
@@ -158,7 +158,7 @@
     </div>
 
     <div class="control-group">
-      <label for="gen-select">Générateur</label>
+      <label for="gen-select">Generator</label>
       <select id="gen-select">
         <option value="binary-tree">Binary Tree</option>
         <option value="hunt-and-kill">Hunt &amp; Kill</option>
@@ -168,19 +168,19 @@
       </select>
     </div>
 
-    <button id="btn-generate">Générer</button>
-    <button id="btn-solve" >Résoudre (A*)</button>
+    <button id="btn-generate">Generate</button>
+    <button id="btn-solve">Solve (A*)</button>
   </div>
 
   <canvas id="maze-canvas"></canvas>
 
   <div id="legend">
-    <div class="legend-item"><div class="dot" style="background:#29b6f6"></div> Départ</div>
-    <div class="legend-item"><div class="dot" style="background:#ab47bc"></div> Arrivée</div>
-    <div class="legend-item"><div class="dot" style="background:#0f3460"></div> Frontière (Prim)</div>
-    <div class="legend-item"><div class="dot" style="background:#4caf50"></div> Ouvert (A*)</div>
-    <div class="legend-item"><div class="dot" style="background:#e53935"></div> Fermé (A*)</div>
-    <div class="legend-item"><div class="dot" style="background:#ffd600"></div> Chemin</div>
+    <div class="legend-item"><div class="dot" style="background:#29b6f6"></div> Start</div>
+    <div class="legend-item"><div class="dot" style="background:#ab47bc"></div> End</div>
+    <div class="legend-item"><div class="dot" style="background:#0f3460"></div> Frontier (Prim)</div>
+    <div class="legend-item"><div class="dot" style="background:#4caf50"></div> Open (A*)</div>
+    <div class="legend-item"><div class="dot" style="background:#e53935"></div> Closed (A*)</div>
+    <div class="legend-item"><div class="dot" style="background:#ffd600"></div> Path</div>
   </div>
 
   <script type="module" src="/src/main.ts"></script>
