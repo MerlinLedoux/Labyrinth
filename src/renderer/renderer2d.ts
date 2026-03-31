@@ -3,16 +3,16 @@ import { EAST, NORTH, SOUTH, WEST } from '../core/types'
 import type { Cell } from '../core/types'
 
 const COLORS = {
-  background:  '#1a1a2e',
-  wall:        '#e0e0e0',
-  unvisited:   '#1a1a2e',
-  inMaze:      '#16213e',
-  frontier:    '#0f3460',
-  open:        '#ffd600',   // A* open set — green
-  closed:      '#e53935',   // A* closed set — red
-  path:        '#4caf50',   // Final path — yellow
-  start:       '#29b6f6',   // Start cell — light blue
-  end:         '#ab47bc',   // End cell — purple
+  background:  '#9f9f9f',
+  wall:        '#000000',
+  unvisited:   '#f0f0f0',
+  inMaze:      '#b5b5b5',
+  frontier:    '#5f93c7',   // pastel blue
+  open:        '#fff59d',   // pastel yellow
+  closed:      '#e57c86',   // pastel red
+  path:        '#82c785',   // pastel green
+  start:       '#76adc7',   // pastel light blue
+  end:         '#be6dcc',   // pastel purple
 }
 
 export class Renderer2D {
@@ -49,13 +49,17 @@ export class Renderer2D {
     this.cellSize = this.computeCellSize(maze)
     const cs = this.cellSize
 
+    // Center the maze in the canvas
+    const ox = Math.floor((this.canvas.width  - maze.cols * cs) / 2)
+    const oy = Math.floor((this.canvas.height - maze.rows * cs) / 2)
+
     ctx.fillStyle = COLORS.background
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
 
     for (let row = 0; row < maze.rows; row++) {
       for (let col = 0; col < maze.cols; col++) {
-        const x = col * cs
-        const y = row * cs
+        const x = ox + col * cs
+        const y = oy + row * cs
         const key = maze.cellKey({ row, col })
 
         // Cell fill
@@ -87,15 +91,20 @@ export class Renderer2D {
       }
     }
 
+    // Outer border
+    ctx.strokeStyle = COLORS.wall
+    ctx.lineWidth = 1.5
+    ctx.strokeRect(ox, oy, maze.cols * cs, maze.rows * cs)
+
     // Start / End markers
-    if (options.start) this.drawMarker(options.start, COLORS.start)
-    if (options.end)   this.drawMarker(options.end,   COLORS.end)
+    if (options.start) this.drawMarker(options.start, COLORS.start, ox, oy)
+    if (options.end)   this.drawMarker(options.end,   COLORS.end,   ox, oy)
   }
 
-  private drawMarker(cell: Cell, color: string): void {
+  private drawMarker(cell: Cell, color: string, ox: number, oy: number): void {
     const cs = this.cellSize
-    const x = cell.col * cs + cs / 2
-    const y = cell.row * cs + cs / 2
+    const x = ox + cell.col * cs + cs / 2
+    const y = oy + cell.row * cs + cs / 2
     const r = cs * 0.3
     this.ctx.beginPath()
     this.ctx.arc(x, y, r, 0, Math.PI * 2)

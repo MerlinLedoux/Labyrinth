@@ -8,8 +8,8 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      background: #0d0d1a;
-      color: #e0e0e0;
+      background: #8088a0;
+      color: #6d6d6d;
       font-family: 'Segoe UI', system-ui, sans-serif;
       display: flex;
       flex-direction: column;
@@ -22,7 +22,7 @@
     h1 {
       font-size: 1.6rem;
       letter-spacing: 0.15em;
-      color: #ffd600;
+      color: #2a49f7;
       text-transform: uppercase;
     }
 
@@ -32,9 +32,10 @@
       gap: 16px 32px;
       align-items: center;
       justify-content: center;
-      background: #16213e;
+      background: #c0c0c0;
       border-radius: 12px;
       padding: 16px 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
 
     .control-group {
@@ -46,7 +47,7 @@
 
     label {
       font-size: 0.8rem;
-      color: #90a4ae;
+      color: #213e4d;
       text-transform: uppercase;
       letter-spacing: 0.08em;
     }
@@ -62,7 +63,7 @@
       width: 120px;
       height: 4px;
       border-radius: 2px;
-      background: #0f3460;
+      background: #4a4a4d;
       outline: none;
       cursor: pointer;
     }
@@ -71,14 +72,14 @@
       width: 14px;
       height: 14px;
       border-radius: 50%;
-      background: #ffd600;
+      background: #0a0a0b;
     }
 
     .value-label {
       font-size: 0.85rem;
       min-width: 48px;
       text-align: right;
-      color: #ffd600;
+      color: #191c2d;
     }
 
     button {
@@ -94,9 +95,9 @@
     button:disabled { opacity: 0.4; cursor: not-allowed; }
 
     select {
-      background: #0f3460;
-      color: #e0e0e0;
-      border: 1px solid #29b6f6;
+      background: #ffffff;
+      color: #050505;
+      border: 1px solid #c5cae9;
       border-radius: 8px;
       padding: 6px 10px;
       font-size: 0.88rem;
@@ -105,8 +106,8 @@
     }
     select:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    #btn-generate { background: #29b6f6; color: #0d0d1a; }
-    #btn-solve    { background: #ffd600; color: #0d0d1a; }
+    #btn-generate { background: #81d4fa; color: #37474f; }
+    #btn-solve    { background: #b3d9ff; color: #37474f; }
 
     #maze-canvas {
       border-radius: 8px;
@@ -119,7 +120,7 @@
       gap: 12px 24px;
       justify-content: center;
       font-size: 0.78rem;
-      color: #90a4ae;
+      color: #1b1f21;
     }
 
     .legend-item {
@@ -176,12 +177,12 @@
   <canvas id="maze-canvas"></canvas>
 
   <div id="legend">
-    <div class="legend-item"><div class="dot" style="background:#29b6f6"></div> Start</div>
-    <div class="legend-item"><div class="dot" style="background:#ab47bc"></div> End</div>
-    <div class="legend-item"><div class="dot" style="background:#0f3460"></div> Frontier (Prim)</div>
-    <div class="legend-item"><div class="dot" style="background:#4caf50"></div> Open (A*)</div>
-    <div class="legend-item"><div class="dot" style="background:#e53935"></div> Closed (A*)</div>
-    <div class="legend-item"><div class="dot" style="background:#ffd600"></div> Path</div>
+    <div class="legend-item"><div class="dot" style="background:#76adc7"></div> Start</div>
+    <div class="legend-item"><div class="dot" style="background:#be6dcc"></div> End</div>
+    <div class="legend-item"><div class="dot" style="background:#5f93c7"></div> Frontier (Prim)</div>
+    <div class="legend-item"><div class="dot" style="background:#fff59d"></div> Open (A*)</div>
+    <div class="legend-item"><div class="dot" style="background:#e57c86"></div> Closed (A*)</div>
+    <div class="legend-item"><div class="dot" style="background:#82c785"></div> Path</div>
   </div>
 
   <script type="module" src="/src/main.ts"></script>
