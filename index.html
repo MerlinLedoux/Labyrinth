@@ -170,8 +170,17 @@
       </select>
     </div>
 
+    <div class="control-group">
+      <label for="solver-select">Solver</label>
+      <select id="solver-select">
+        <option value="astar">A*</option>
+        <option value="bfs">BFS</option>
+        <option value="dfs">DFS</option>
+      </select>
+    </div>
+
     <button id="btn-generate">Generate</button>
-    <button id="btn-solve">Solve (A*)</button>
+    <button id="btn-solve">Solve</button>
   </div>
 
   <canvas id="maze-canvas"></canvas>
@@ -179,9 +188,9 @@
   <div id="legend">
     <div class="legend-item"><div class="dot" style="background:#76adc7"></div> Start</div>
     <div class="legend-item"><div class="dot" style="background:#be6dcc"></div> End</div>
-    <div class="legend-item"><div class="dot" style="background:#5f93c7"></div> Frontier (Prim)</div>
-    <div class="legend-item"><div class="dot" style="background:#fff59d"></div> Open (A*)</div>
-    <div class="legend-item"><div class="dot" style="background:#e57c86"></div> Closed (A*)</div>
+    <div class="legend-item"><div class="dot" style="background:#5f93c7"></div> Frontier</div>
+    <div class="legend-item"><div class="dot" style="background:#fff59d"></div> Open</div>
+    <div class="legend-item"><div class="dot" style="background:#e57c86"></div> Closed</div>
     <div class="legend-item"><div class="dot" style="background:#82c785"></div> Path</div>
   </div>
 

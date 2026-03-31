@@ -8,6 +8,9 @@ import { BinaryTreeGenerator } from './generators/binary-tree'
 import { HuntAndKillGenerator } from './generators/hunt-and-kill'
 import { RecursiveDivisionGenerator } from './generators/recursive-division'
 import { AStarSolver } from './solvers/astar'
+import { BFSSolver } from './solvers/bfs'
+import { DFSSolver } from './solvers/dfs'
+import type { MazeSolver } from './solvers/solver'
 import { Renderer2D } from './renderer/renderer2d'
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -19,6 +22,14 @@ const sizeLabel     = document.getElementById('size-label') as HTMLSpanElement
 const speedSlider   = document.getElementById('speed-slider') as HTMLInputElement
 const speedLabel    = document.getElementById('speed-label') as HTMLSpanElement
 const genSelect     = document.getElementById('gen-select') as HTMLSelectElement
+const solverSelect  = document.getElementById('solver-select') as HTMLSelectElement
+
+// ── Solver registry ───────────────────────────────────────────────────────────
+const SOLVERS: Record<string, MazeSolver> = {
+  'astar': new AStarSolver(),
+  'bfs':   new BFSSolver(),
+  'dfs':   new DFSSolver(),
+}
 
 // ── Generator registry ────────────────────────────────────────────────────────
 const GENERATORS: Record<string, MazeGenerator> = {
@@ -35,7 +46,6 @@ let maze: Maze | null = null
 let running = false
 
 const renderer = new Renderer2D(canvas)
-const solver   = new AStarSolver()
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function delay(ms: number): Promise<void> {
@@ -53,9 +63,10 @@ function resizeCanvas(): void {
 }
 
 function setControls(disabled: boolean): void {
-  btnGen.disabled    = disabled
-  btnSolve.disabled  = disabled
-  genSelect.disabled = disabled
+  btnGen.disabled        = disabled
+  btnSolve.disabled      = disabled
+  genSelect.disabled     = disabled
+  solverSelect.disabled  = disabled
 }
 
 // ── Generate ──────────────────────────────────────────────────────────────────
@@ -111,6 +122,7 @@ async function solve(): Promise<void> {
   const closed = new Set<number>()
   let   path: Cell[] = []
 
+  const solver = SOLVERS[solverSelect.value] ?? SOLVERS['astar']
   for await (const step of solver.solve(currentMaze, start, end)) {
     if (step.type === 'open')  open.add(currentMaze.cellKey(step.cell))
     if (step.type === 'close') { closed.add(currentMaze.cellKey(step.cell)); open.delete(currentMaze.cellKey(step.cell)) }
