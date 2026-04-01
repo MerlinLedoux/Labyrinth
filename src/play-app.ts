@@ -9,13 +9,13 @@ const VIS_RANGE   = 3
 // ── Couleurs ──────────────────────────────────────────────────────────────────
 const COL = {
   bg:        '#0d0d0d',
-  fog:       '#141414',
-  memory:    '#2a2a2a',
+  fog:       '#74537e',
+  memory:    '#575757',
   visible:   '#c0c0c0',
   wallVis:   '#000000',
-  wallMem:   '#444444',
-  player:    '#C94747',
-  end:       '#ff8a65',
+  wallMem:   '#000000',
+  player:    '#c63737',
+  end:       '#ef643a',
 }
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
@@ -34,25 +34,32 @@ let won     = false
 let revealed = new Set<number>()   // toutes les cases déjà vues
 export let playActive = false      // écoute clavier active seulement ici
 
-// ── BFS visibility ────────────────────────────────────────────────────────────
-/** Retourne l'ensemble des cases accessibles en ≤ range pas sans traverser de mur. */
+// ── Visibilité en croix ───────────────────────────────────────────────────────
+/** Depuis `from`, regarde dans les 4 directions cardinales.
+ *  Avance case par case jusqu'à rencontrer un mur ou atteindre `range`. */
 function computeVisible(m: Maze, from: Cell, range: number): Set<number> {
-  const vis  = new Set<number>()
-  const queue: [Cell, number][] = [[from, 0]]
+  const vis = new Set<number>()
   vis.add(m.cellKey(from))
-  while (queue.length > 0) {
-    const [cell, dist] = queue.shift()!
-    if (dist >= range) continue
-    for (const nb of m.passableNeighbors(cell)) {
-      const k = m.cellKey(nb)
-      if (!vis.has(k)) {
-        vis.add(k)
-        queue.push([nb, dist + 1])
-      }
+
+  const rays: [typeof NORTH | typeof SOUTH | typeof EAST | typeof WEST, number, number][] = [
+    [NORTH, -1,  0],
+    [SOUTH,  1,  0],
+    [EAST,   0,  1],
+    [WEST,   0, -1],
+  ]
+
+  for (const [wallDir, dr, dc] of rays) {
+    let cur = from
+    for (let step = 0; step < range; step++) {
+      if (m.hasWall(cur, wallDir)) break        // mur devant : on s'arrête
+      cur = { row: cur.row + dr, col: cur.col + dc }
+      vis.add(m.cellKey(cur))
     }
   }
+
   return vis
 }
+
 
 // ── Rendu ─────────────────────────────────────────────────────────────────────
 function draw(): void {
@@ -91,12 +98,12 @@ function draw(): void {
 
       // Murs de cette cellule
       ctx.strokeStyle = isVis ? COL.wallVis : COL.wallMem
-      ctx.lineWidth   = isVis ? 2 : 1.5
+      ctx.lineWidth   = 5
       ctx.beginPath()
-      if (maze.hasWall({ row, col }, NORTH)) { ctx.moveTo(x,      y     ); ctx.lineTo(x + cs, y     ) }
-      if (maze.hasWall({ row, col }, SOUTH)) { ctx.moveTo(x,      y + cs); ctx.lineTo(x + cs, y + cs) }
-      if (maze.hasWall({ row, col }, WEST))  { ctx.moveTo(x,      y     ); ctx.lineTo(x,      y + cs) }
-      if (maze.hasWall({ row, col }, EAST))  { ctx.moveTo(x + cs, y     ); ctx.lineTo(x + cs, y + cs) }
+      if (maze.hasWall({ row, col }, NORTH)) { ctx.moveTo(x - 4, y - 2); ctx.lineTo(x + cs + 1, y - 2) }
+      if (maze.hasWall({ row, col }, SOUTH)) { ctx.moveTo(x - 4, y - 2 + cs); ctx.lineTo(x + cs + 1, y - 2 + cs) }
+      if (maze.hasWall({ row, col }, WEST))  { ctx.moveTo(x-2,      y-1     ); ctx.lineTo(x-2,      y + cs + 1) }
+      if (maze.hasWall({ row, col }, EAST))  { ctx.moveTo(x-2 + cs, y-1     ); ctx.lineTo(x-2 + cs, y + cs + 1) }
       ctx.stroke()
     }
   }
