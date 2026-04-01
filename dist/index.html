@@ -197,7 +197,7 @@
     #btn-cube-solve { background: #9E3C3C; color: #f0f0f0; }
     #btn-cube-back  { background: #444444; color: #e0e0e0; }
   </style>
-  <script type="module" crossorigin src="/assets/index-BcElAwFn.js"></script>
+  <script type="module" crossorigin src="/assets/index-f0lG21Zs.js"></script>
 </head>
 <body>
 
@@ -275,9 +275,23 @@
 
   <!-- ── Section Cube 3D ── -->
   <div id="cube-section">
-    <h2>Cube 3D — 10×10×10</h2>
+    <h2 id="cube-title">Cube 3D — 10×10×10</h2>
 
     <div id="cube-controls">
+      <div class="control-group">
+        <label for="cube-size">Size</label>
+        <div class="slider-row">
+          <input type="range" id="cube-size" min="5" max="20" value="10" />
+          <span class="value-label" id="cube-size-label">10×10×10</span>
+        </div>
+      </div>
+      <div class="control-group">
+        <label for="cube-openings">Extra openings</label>
+        <div class="slider-row">
+          <input type="range" id="cube-openings" min="0" max="100" value="0" />
+          <span class="value-label" id="cube-openings-label">0</span>
+        </div>
+      </div>
       <div class="control-group">
         <label for="cube-speed">Speed (delay)</label>
         <div class="slider-row">
@@ -287,7 +301,6 @@
       </div>
       <button id="btn-cube-gen">Generate</button>
       <button id="btn-cube-solve">Solve</button>
-      <button id="btn-cube-back">← Back</button>
     </div>
 
     <canvas id="canvas-cube"></canvas>

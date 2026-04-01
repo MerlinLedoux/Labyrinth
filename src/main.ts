@@ -238,25 +238,28 @@ btnToggle.addEventListener('click', () => {
 
 // ── Cube 3D section toggle ────────────────────────────────────────────────────
 const btnOpenCube  = document.getElementById('btn-open-cube')  as HTMLButtonElement
-const btnCubeBack  = document.getElementById('btn-cube-back')  as HTMLButtonElement
 const mainSection  = document.getElementById('main-section')   as HTMLDivElement
 const cubeSection  = document.getElementById('cube-section')   as HTMLDivElement
 
 let cubeInitialized = false
+let inCubeMode = false
 
 btnOpenCube.addEventListener('click', () => {
-  mainSection.style.display = 'none'
-  cubeSection.style.display = 'flex'
-  resizeCubeCanvas()
-  if (!cubeInitialized) {
-    cubeInitialized = true
-    initCubeApp()
+  inCubeMode = !inCubeMode
+  if (inCubeMode) {
+    mainSection.style.display = 'none'
+    cubeSection.style.display = 'flex'
+    btnOpenCube.textContent   = '2D Maze'
+    resizeCubeCanvas()
+    if (!cubeInitialized) {
+      cubeInitialized = true
+      initCubeApp()
+    }
+  } else {
+    cubeSection.style.display = 'none'
+    mainSection.style.display = 'flex'
+    btnOpenCube.textContent   = 'Cube 3D'
   }
-})
-
-btnCubeBack.addEventListener('click', () => {
-  cubeSection.style.display = 'none'
-  mainSection.style.display = 'flex'
 })
 
 window.addEventListener('resize', () => {
