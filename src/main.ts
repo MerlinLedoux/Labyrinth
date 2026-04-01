@@ -1,6 +1,7 @@
 import { Maze } from './core/maze'
 import { EAST, SOUTH } from './core/types'
 import type { Cell } from './core/types'
+import { initCubeApp, resizeCubeCanvas } from './cube-app'
 import type { MazeGenerator } from './generators/generator'
 import { PrimGenerator } from './generators/prim'
 import { RecursiveBacktrackerGenerator } from './generators/recursive-backtracker'
@@ -235,10 +236,34 @@ btnToggle.addEventListener('click', () => {
   drawCurrent()
 })
 
+// ── Cube 3D section toggle ────────────────────────────────────────────────────
+const btnOpenCube  = document.getElementById('btn-open-cube')  as HTMLButtonElement
+const btnCubeBack  = document.getElementById('btn-cube-back')  as HTMLButtonElement
+const mainSection  = document.getElementById('main-section')   as HTMLDivElement
+const cubeSection  = document.getElementById('cube-section')   as HTMLDivElement
+
+let cubeInitialized = false
+
+btnOpenCube.addEventListener('click', () => {
+  mainSection.style.display = 'none'
+  cubeSection.style.display = 'flex'
+  resizeCubeCanvas()
+  if (!cubeInitialized) {
+    cubeInitialized = true
+    initCubeApp()
+  }
+})
+
+btnCubeBack.addEventListener('click', () => {
+  cubeSection.style.display = 'none'
+  mainSection.style.display = 'flex'
+})
+
 window.addEventListener('resize', () => {
   resizeCanvas()
   renderer3d?.resize()
   drawCurrent()
+  if (cubeInitialized) resizeCubeCanvas()
 })
 
 // ── Init ──────────────────────────────────────────────────────────────────────

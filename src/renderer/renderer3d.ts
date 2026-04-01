@@ -9,13 +9,13 @@ const C = {
   background:  0xC7C7C7,
   wall:        0x736E6E,
   ground:      0x7D7D7D,
-  unvisited:   0x7D7D7D,  // herbe — fond quasi-invisible
-  inMaze:      0xB8B8B8,  // pierre sable (couloir)
+  unvisited:   0x7D7D7D, 
+  inMaze:      0xB8B8B8, 
   frontier:    0x90caf9,
   open:        0x9FCF65,
   closed:      0x65ADCF,
-  openFaded:   0xAEC196,  // open fondu vers inMaze (chemin trouvé)
-  closedFaded: 0x96B3C1,  // closed fondu vers inMaze (chemin trouvé)
+  openFaded:   0xAEC196,  
+  closedFaded: 0x96B3C1, 
   path:        0xC94747,
   start:       0x81d4fa,
   end:         0x9E3C3C,

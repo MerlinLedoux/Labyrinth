@@ -1,6 +1,6 @@
 import type { Maze } from '../core/maze'
 import type { Cell, GeneratorStep } from '../core/types'
-import { EAST, NORTH, SOUTH, WEST } from '../core/types'
+import { EAST, SOUTH } from '../core/types'
 import type { MazeGenerator } from './generator'
 
 // Recursive Division works in reverse: start with NO walls (all passages open),
