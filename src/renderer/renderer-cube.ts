@@ -1,29 +1,56 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { NORTH3, SOUTH3, EAST3, WEST3, UP3, DOWN3 } from '../core/maze3d'
+import { SOUTH3, EAST3, UP3 } from '../core/maze3d'
 import type { Maze3D, Cell3D } from '../core/maze3d'
 
-// ── Palette (même thème que le renderer 2D/3D) ────────────────────────────────
+// ── Palette ───────────────────────────────────────────────────────────────────
 const C = {
   background: 0x1a1a1a,
-  wall:       0xaaaaaa,
-  inMaze:     0xcccccc,   // gris clair visible à travers les murs
+  sphere:     0x3a3a3a,   // nœud non visité
+  inMaze:     0x777777,   // nœud/tube dans le labyrinthe généré
   frontier:   0x90caf9,
   open:       0x9FCF65,
   closed:     0x65ADCF,
   path:       0xC94747,
   start:      0x81d4fa,
   end:        0xff8a65,
+  dim:        0x1e1e1e,   // tout ce qui n'est pas le chemin une fois trouvé
 }
 
-const WALL_OPACITY = 0.18   // murs très transparents pour voir l'intérieur
-const CELL_OPACITY = 0.55   // cellules semi-transparentes
-const WALL_T = 0.06          // épaisseur des cloisons
-const CELL_S = 0.72          // cubes un peu plus petits → plus d'air entre eux
+// Priorité visuelle pour choisir la couleur d'un tube entre deux nœuds
+const PRIORITY: Record<number, number> = {
+  [C.path]:     6,
+  [C.start]:    5,
+  [C.end]:      5,
+  [C.closed]:   4,
+  [C.open]:     3,
+  [C.frontier]: 2,
+  [C.inMaze]:   1,
+  [C.sphere]:   0,
+  [C.dim]:      -1,
+}
 
-const _mat  = new THREE.Matrix4()
-const _col  = new THREE.Color()
+const SPHERE_R = 0.10
+const TUBE_R   = 0.065
+
+// Rotations pré-calculées pour orienter les cylindres (Three.js : cylindre le long de Y par défaut)
+const ROT_NS = new THREE.Matrix4().makeRotationX(Math.PI / 2)   // Y → Z (axe row)
+const ROT_EW = new THREE.Matrix4().makeRotationZ(-Math.PI / 2)  // Y → X (axe col)
+// UP direction : pas de rotation (Y = axe layer)
+
+const _m   = new THREE.Matrix4()
+const _col = new THREE.Color()
 const _zero = new THREE.Matrix4().makeScale(0, 0, 0)
+
+type DrawOptions = {
+  inMaze?   : Set<number>
+  frontier? : Set<number>
+  open?     : Set<number>
+  closed?   : Set<number>
+  path?     : Cell3D[]
+  start?    : Cell3D
+  end?      : Cell3D
+}
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 export class RendererCube {
@@ -33,17 +60,15 @@ export class RendererCube {
   private controls   : OrbitControls
   private rafId      = 0
 
-  // Instanced meshes
-  private cellIM!   : THREE.InstancedMesh
-  private nsWallIM! : THREE.InstancedMesh   // cloisons ⊥ axe row  (plan XY, fin en Z)
-  private ewWallIM! : THREE.InstancedMesh   // cloisons ⊥ axe col  (plan YZ, fin en X)
-  private udWallIM! : THREE.InstancedMesh   // cloisons ⊥ axe layer(plan XZ, fin en Y)
+  private sphereIM! : THREE.InstancedMesh
+  private nsTubeIM! : THREE.InstancedMesh   // passages SOUTH (axe row)
+  private ewTubeIM! : THREE.InstancedMesh   // passages EAST  (axe col)
+  private udTubeIM! : THREE.InstancedMesh   // passages UP    (axe layer)
 
   private lastKey = ''
 
   constructor(private canvas: HTMLCanvasElement) {
     this.scene.background = new THREE.Color(C.background)
-
     this.camera = new THREE.PerspectiveCamera(50, canvas.width / canvas.height, 0.1, 500)
 
     this.glRenderer = new THREE.WebGLRenderer({ canvas, antialias: true })
@@ -51,12 +76,12 @@ export class RendererCube {
     this.glRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
     this.controls = new OrbitControls(this.camera, canvas)
-    this.controls.enableDamping  = true
-    this.controls.dampingFactor  = 0.05
-    this.controls.maxPolarAngle  = Math.PI   // rotation libre (vue de dessous possible)
+    this.controls.enableDamping = true
+    this.controls.dampingFactor = 0.05
+    this.controls.maxPolarAngle = Math.PI
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.7))
-    const sun = new THREE.DirectionalLight(0xffffff, 0.6)
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.9))
+    const sun = new THREE.DirectionalLight(0xffffff, 0.5)
     sun.position.set(10, 20, 15)
     this.scene.add(sun)
 
@@ -85,25 +110,14 @@ export class RendererCube {
     this.glRenderer.dispose()
   }
 
-  drawMaze(
-    maze: Maze3D,
-    options: {
-      inMaze?   : Set<number>
-      frontier? : Set<number>
-      open?     : Set<number>
-      closed?   : Set<number>
-      path?     : Cell3D[]
-      start?    : Cell3D
-      end?      : Cell3D
-    } = {},
-  ): void {
+  drawMaze(maze: Maze3D, options: DrawOptions = {}): void {
     const key = `${maze.rows}x${maze.cols}x${maze.layers}`
     if (key !== this.lastKey) {
       this.buildGeometry(maze)
       this.lastKey = key
     }
-    this.updateCells(maze, options)
-    this.updateWalls(maze)
+    this.updateSpheres(maze, options)
+    this.updateTubes(maze, options)
   }
 
   // ─── Privé ───────────────────────────────────────────────────────────────────
@@ -111,234 +125,203 @@ export class RendererCube {
   private buildGeometry(maze: Maze3D): void {
     const { rows, cols, layers } = maze
 
-    // Nettoyage si changement de taille
+    // Nettoyage
     if (this.lastKey) {
-      this.scene.remove(this.cellIM, this.nsWallIM, this.ewWallIM, this.udWallIM)
-      this.cellIM.geometry.dispose();   (this.cellIM.material as THREE.Material).dispose()
-      this.nsWallIM.geometry.dispose()
-      this.ewWallIM.geometry.dispose()
-      this.udWallIM.geometry.dispose()
-      ;(this.nsWallIM.material as THREE.Material).dispose()
-    }
-
-    const nCells  = rows * cols * layers
-    const nNSWall = (rows + 1) * cols * layers
-    const nEWWall = rows * (cols + 1) * layers
-    const nUDWall = rows * cols * (layers + 1)
-
-    // ── Cellules (cubes semi-transparents) ────────────────────────────────────
-    this.cellIM = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(CELL_S, CELL_S, CELL_S),
-      new THREE.MeshStandardMaterial({
-        transparent: true,
-        opacity:     CELL_OPACITY,
-        depthWrite:  false,
-        roughness:   0.7,
-        metalness:   0,
-      }),
-      nCells,
-    )
-    for (let i = 0; i < nCells; i++) {
-      this.cellIM.setMatrixAt(i, _zero)
-      this.cellIM.setColorAt(i, _col.set(C.inMaze))
-    }
-    this.cellIM.instanceMatrix.needsUpdate = true
-    this.cellIM.instanceColor!.needsUpdate = true
-    this.cellIM.renderOrder = 1   // dessiné après les murs opaques
-    this.scene.add(this.cellIM)
-
-    // ── Matériau murs — très transparent pour voir l'intérieur du cube ────────
-    const wallMat = new THREE.MeshStandardMaterial({
-      color:       C.wall,
-      transparent: true,
-      opacity:     WALL_OPACITY,
-      depthWrite:  false,
-      roughness:   0.9,
-      metalness:   0,
-    })
-
-    // ── NS walls : fine en Z, couvre XY ──────────────────────────────────────
-    // Index: r * cols * layers + c * layers + l
-    // Position: (col=c, layer=l, row-boundary=r-0.5) → Three.js (x=c, y=l, z=r-0.5)
-    this.nsWallIM = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(1.0, 1.0, WALL_T),
-      wallMat,
-      nNSWall,
-    )
-    for (let r = 0; r <= rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        for (let l = 0; l < layers; l++) {
-          _mat.makeTranslation(c, l, r - 0.5)
-          this.nsWallIM.setMatrixAt(r * cols * layers + c * layers + l, _mat)
-        }
+      this.scene.remove(this.sphereIM, this.nsTubeIM, this.ewTubeIM, this.udTubeIM)
+      for (const im of [this.sphereIM, this.nsTubeIM, this.ewTubeIM, this.udTubeIM]) {
+        im.geometry.dispose()
+        ;(im.material as THREE.Material).dispose()
       }
     }
-    this.nsWallIM.instanceMatrix.needsUpdate = true
-    this.scene.add(this.nsWallIM)
 
-    // ── EW walls : fine en X, couvre YZ ──────────────────────────────────────
-    // Index: r * (cols+1) * layers + c * layers + l
-    // Position: (x=c-0.5, y=l, z=r)
-    this.ewWallIM = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(WALL_T, 1.0, 1.0),
-      wallMat,
-      nEWWall,
+    const nSpheres = rows * cols * layers
+    const nNSTube  = (rows - 1) * cols * layers
+    const nEWTube  = rows * (cols - 1) * layers
+    const nUDTube  = rows * cols * (layers - 1)
+
+    // ── Sphères ───────────────────────────────────────────────────────────────
+    this.sphereIM = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(SPHERE_R, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.1 }),
+      nSpheres,
     )
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c <= cols; c++) {
-        for (let l = 0; l < layers; l++) {
-          _mat.makeTranslation(c - 0.5, l, r)
-          this.ewWallIM.setMatrixAt(r * (cols + 1) * layers + c * layers + l, _mat)
+    for (let l = 0; l < layers; l++)
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++) {
+          const idx = maze.cellKey({ row: r, col: c, layer: l })
+          _m.makeTranslation(c, l, r)
+          this.sphereIM.setMatrixAt(idx, _m)
+          this.sphereIM.setColorAt(idx, _col.set(C.sphere))
         }
-      }
-    }
-    this.ewWallIM.instanceMatrix.needsUpdate = true
-    this.scene.add(this.ewWallIM)
+    this.sphereIM.instanceMatrix.needsUpdate = true
+    this.sphereIM.instanceColor!.needsUpdate = true
+    this.scene.add(this.sphereIM)
 
-    // ── UD walls : fine en Y, couvre XZ ──────────────────────────────────────
-    // Index: r * cols * (layers+1) + c * (layers+1) + l
-    // Position: (x=c, y=l-0.5, z=r)
-    this.udWallIM = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(1.0, WALL_T, 1.0),
-      wallMat,
-      nUDWall,
-    )
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        for (let l = 0; l <= layers; l++) {
-          _mat.makeTranslation(c, l - 0.5, r)
-          this.udWallIM.setMatrixAt(r * cols * (layers + 1) + c * (layers + 1) + l, _mat)
-        }
-      }
-    }
-    this.udWallIM.instanceMatrix.needsUpdate = true
-    this.scene.add(this.udWallIM)
+    // Matériau partagé pour les tubes (blanc : la couleur vient de instanceColor)
+    const tubeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.15 })
+    const tubeGeo = new THREE.CylinderGeometry(TUBE_R, TUBE_R, 1.0, 8)
 
-    // ── Caméra centrée sur le cube ────────────────────────────────────────────
+    // ── NS tubes (SOUTH — le long de Z) ──────────────────────────────────────
+    this.nsTubeIM = new THREE.InstancedMesh(tubeGeo, tubeMat, nNSTube)
+    for (let i = 0; i < nNSTube; i++) {
+      this.nsTubeIM.setMatrixAt(i, _zero)
+      this.nsTubeIM.setColorAt(i, _col.set(C.inMaze))
+    }
+    this.nsTubeIM.instanceMatrix.needsUpdate = true
+    this.nsTubeIM.instanceColor!.needsUpdate = true
+    this.scene.add(this.nsTubeIM)
+
+    // ── EW tubes (EAST — le long de X) ───────────────────────────────────────
+    this.ewTubeIM = new THREE.InstancedMesh(tubeGeo, tubeMat, nEWTube)
+    for (let i = 0; i < nEWTube; i++) {
+      this.ewTubeIM.setMatrixAt(i, _zero)
+      this.ewTubeIM.setColorAt(i, _col.set(C.inMaze))
+    }
+    this.ewTubeIM.instanceMatrix.needsUpdate = true
+    this.ewTubeIM.instanceColor!.needsUpdate = true
+    this.scene.add(this.ewTubeIM)
+
+    // ── UD tubes (UP — le long de Y) ─────────────────────────────────────────
+    this.udTubeIM = new THREE.InstancedMesh(tubeGeo, tubeMat, nUDTube)
+    for (let i = 0; i < nUDTube; i++) {
+      this.udTubeIM.setMatrixAt(i, _zero)
+      this.udTubeIM.setColorAt(i, _col.set(C.inMaze))
+    }
+    this.udTubeIM.instanceMatrix.needsUpdate = true
+    this.udTubeIM.instanceColor!.needsUpdate = true
+    this.scene.add(this.udTubeIM)
+
+    // ── Caméra ────────────────────────────────────────────────────────────────
     const cx   = (cols   - 1) / 2
     const cy   = (layers - 1) / 2
     const cz   = (rows   - 1) / 2
-    const dist = Math.max(rows, cols, layers) * 1.3
+    const dist = Math.max(rows, cols, layers) * 1.4
     this.controls.target.set(cx, cy, cz)
-    this.camera.position.set(cx + dist, cy + dist * 0.9, cz + dist * 1.3)
+    this.camera.position.set(cx + dist, cy + dist, cz + dist * 1.1)
     this.camera.lookAt(cx, cy, cz)
     this.controls.update()
   }
 
-  /** Met à jour la couleur/visibilité de chaque cellule selon son état. */
-  private updateCells(
-    maze: Maze3D,
-    options: {
-      inMaze?   : Set<number>
-      frontier? : Set<number>
-      open?     : Set<number>
-      closed?   : Set<number>
-      path?     : Cell3D[]
-      start?    : Cell3D
-      end?      : Cell3D
-    },
-  ): void {
-    const { rows, cols, layers } = maze
-    const pathFound = (options.path?.length ?? 0) > 0
-
-    for (let l = 0; l < layers; l++) {
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const cell: Cell3D = { row: r, col: c, layer: l }
-          const key = maze.cellKey(cell)
-          const idx = key   // cellKey === index dans le InstancedMesh
-
-          const onPath  = options.path?.some(p => p.row === r && p.col === c && p.layer === l)
-          const isStart = options.start?.row === r && options.start?.col === c && options.start?.layer === l
-          const isEnd   = options.end?.row   === r && options.end?.col   === c && options.end?.layer   === l
-
-          let color: number | null = null
-
-          if      (onPath)                          color = C.path
-          else if (isStart)                         color = C.start
-          else if (isEnd)                           color = C.end
-          else if (options.closed?.has(key))        color = pathFound ? C.inMaze : C.closed
-          else if (options.open?.has(key))          color = pathFound ? C.inMaze : C.open
-          else if (options.frontier?.has(key))      color = C.frontier
-          else if (options.inMaze?.has(key))        color = C.inMaze
-          // unvisited → caché
-
-          if (color !== null) {
-            _mat.makeTranslation(c, l, r)
-            this.cellIM.setMatrixAt(idx, _mat)
-            this.cellIM.setColorAt(idx, _col.set(color))
-          } else {
-            this.cellIM.setMatrixAt(idx, _zero)
-          }
-        }
-      }
-    }
-    this.cellIM.instanceMatrix.needsUpdate = true
-    this.cellIM.instanceColor!.needsUpdate = true
+  /** Couleur d'un nœud selon son état courant. */
+  private nodeColor(
+    key: number,
+    options: DrawOptions,
+    pathKeys: Set<number>,
+    startKey: number,
+    endKey: number,
+    pathFound: boolean,
+  ): number {
+    if (key === startKey) return C.start
+    if (key === endKey)   return C.end
+    if (pathFound) return pathKeys.has(key) ? C.path : C.dim
+    if (pathKeys.has(key))          return C.path
+    if (options.closed?.has(key))   return C.closed
+    if (options.open?.has(key))     return C.open
+    if (options.frontier?.has(key)) return C.frontier
+    if (options.inMaze?.has(key))   return C.inMaze
+    return C.sphere
   }
 
-  /** Affiche/cache chaque cloison selon les murs du labyrinthe. */
-  private updateWalls(maze: Maze3D): void {
+  private updateSpheres(maze: Maze3D, options: DrawOptions): void {
     const { rows, cols, layers } = maze
+    const pathKeys  = new Set(options.path?.map(p => maze.cellKey(p)) ?? [])
+    const startKey  = options.start ? maze.cellKey(options.start) : -1
+    const endKey    = options.end   ? maze.cellKey(options.end)   : -1
+    const pathFound = pathKeys.size > 0
 
-    // NS walls
-    for (let r = 0; r <= rows; r++) {
-      for (let c = 0; c < cols; c++) {
+    for (let l = 0; l < layers; l++)
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++) {
+          const key = maze.cellKey({ row: r, col: c, layer: l })
+          this.sphereIM.setColorAt(key, _col.set(
+            this.nodeColor(key, options, pathKeys, startKey, endKey, pathFound),
+          ))
+        }
+    this.sphereIM.instanceColor!.needsUpdate = true
+  }
+
+  private updateTubes(maze: Maze3D, options: DrawOptions): void {
+    const { rows, cols, layers } = maze
+    const pathKeys  = new Set(options.path?.map(p => maze.cellKey(p)) ?? [])
+    const startKey  = options.start ? maze.cellKey(options.start) : -1
+    const endKey    = options.end   ? maze.cellKey(options.end)   : -1
+    const pathFound = pathKeys.size > 0
+
+    // Ensemble des arêtes du chemin : "min-max" pour lookup O(1)
+    const pathEdges = new Set<number>()
+    const path = options.path ?? []
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = maze.cellKey(path[i])
+      const b = maze.cellKey(path[i + 1])
+      pathEdges.add(a * rows * cols * layers + b)
+      pathEdges.add(b * rows * cols * layers + a)
+    }
+
+    const nc = (keyA: number, keyB: number): number => {
+      // Tube chemin
+      if (pathEdges.has(keyA * rows * cols * layers + keyB)) return C.path
+      if (pathFound) return C.dim
+      // Sinon : couleur de l'extrémité de plus haute priorité
+      const ca = this.nodeColor(keyA, options, pathKeys, startKey, endKey, false)
+      const cb = this.nodeColor(keyB, options, pathKeys, startKey, endKey, false)
+      return (PRIORITY[ca] ?? 0) >= (PRIORITY[cb] ?? 0) ? ca : cb
+    }
+
+    // ── NS tubes ─────────────────────────────────────────────────────────────
+    for (let r = 0; r < rows - 1; r++)
+      for (let c = 0; c < cols; c++)
         for (let l = 0; l < layers; l++) {
-          const visible =
-            r === 0    ? maze.hasWall({ row: 0,      col: c, layer: l }, NORTH3) :
-            r === rows ? maze.hasWall({ row: rows-1,  col: c, layer: l }, SOUTH3) :
-                         maze.hasWall({ row: r,       col: c, layer: l }, NORTH3)
-          const idx = r * cols * layers + c * layers + l
-          if (visible) {
-            _mat.makeTranslation(c, l, r - 0.5)
-            this.nsWallIM.setMatrixAt(idx, _mat)
+          const idx  = r * cols * layers + c * layers + l
+          const open = !maze.hasWall({ row: r, col: c, layer: l }, SOUTH3)
+          if (open) {
+            _m.copy(ROT_NS); _m.setPosition(c, l, r + 0.5)
+            const kA = maze.cellKey({ row: r,     col: c, layer: l })
+            const kB = maze.cellKey({ row: r + 1, col: c, layer: l })
+            this.nsTubeIM.setMatrixAt(idx, _m)
+            this.nsTubeIM.setColorAt(idx, _col.set(nc(kA, kB)))
           } else {
-            this.nsWallIM.setMatrixAt(idx, _zero)
+            this.nsTubeIM.setMatrixAt(idx, _zero)
           }
         }
-      }
-    }
-    this.nsWallIM.instanceMatrix.needsUpdate = true
+    this.nsTubeIM.instanceMatrix.needsUpdate = true
+    this.nsTubeIM.instanceColor!.needsUpdate = true
 
-    // EW walls
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c <= cols; c++) {
+    // ── EW tubes ─────────────────────────────────────────────────────────────
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols - 1; c++)
         for (let l = 0; l < layers; l++) {
-          const visible =
-            c === 0    ? maze.hasWall({ row: r, col: 0,     layer: l }, WEST3) :
-            c === cols ? maze.hasWall({ row: r, col: cols-1, layer: l }, EAST3) :
-                         maze.hasWall({ row: r, col: c,      layer: l }, WEST3)
-          const idx = r * (cols + 1) * layers + c * layers + l
-          if (visible) {
-            _mat.makeTranslation(c - 0.5, l, r)
-            this.ewWallIM.setMatrixAt(idx, _mat)
+          const idx  = r * (cols - 1) * layers + c * layers + l
+          const open = !maze.hasWall({ row: r, col: c, layer: l }, EAST3)
+          if (open) {
+            _m.copy(ROT_EW); _m.setPosition(c + 0.5, l, r)
+            const kA = maze.cellKey({ row: r, col: c,     layer: l })
+            const kB = maze.cellKey({ row: r, col: c + 1, layer: l })
+            this.ewTubeIM.setMatrixAt(idx, _m)
+            this.ewTubeIM.setColorAt(idx, _col.set(nc(kA, kB)))
           } else {
-            this.ewWallIM.setMatrixAt(idx, _zero)
+            this.ewTubeIM.setMatrixAt(idx, _zero)
           }
         }
-      }
-    }
-    this.ewWallIM.instanceMatrix.needsUpdate = true
+    this.ewTubeIM.instanceMatrix.needsUpdate = true
+    this.ewTubeIM.instanceColor!.needsUpdate = true
 
-    // UD walls
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        for (let l = 0; l <= layers; l++) {
-          const visible =
-            l === 0      ? maze.hasWall({ row: r, col: c, layer: 0        }, DOWN3) :
-            l === layers ? maze.hasWall({ row: r, col: c, layer: layers-1  }, UP3)   :
-                           maze.hasWall({ row: r, col: c, layer: l         }, DOWN3)
-          const idx = r * cols * (layers + 1) + c * (layers + 1) + l
-          if (visible) {
-            _mat.makeTranslation(c, l - 0.5, r)
-            this.udWallIM.setMatrixAt(idx, _mat)
+    // ── UD tubes ─────────────────────────────────────────────────────────────
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        for (let l = 0; l < layers - 1; l++) {
+          const idx  = r * cols * (layers - 1) + c * (layers - 1) + l
+          const open = !maze.hasWall({ row: r, col: c, layer: l }, UP3)
+          if (open) {
+            _m.makeTranslation(c, l + 0.5, r)   // cylindre déjà le long de Y
+            const kA = maze.cellKey({ row: r, col: c, layer: l     })
+            const kB = maze.cellKey({ row: r, col: c, layer: l + 1 })
+            this.udTubeIM.setMatrixAt(idx, _m)
+            this.udTubeIM.setColorAt(idx, _col.set(nc(kA, kB)))
           } else {
-            this.udWallIM.setMatrixAt(idx, _zero)
+            this.udTubeIM.setMatrixAt(idx, _zero)
           }
         }
-      }
-    }
-    this.udWallIM.instanceMatrix.needsUpdate = true
+    this.udTubeIM.instanceMatrix.needsUpdate = true
+    this.udTubeIM.instanceColor!.needsUpdate = true
   }
 }
