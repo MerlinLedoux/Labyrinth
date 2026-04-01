@@ -8,8 +8,8 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      background: #8088a0;
-      color: #6d6d6d;
+      background: #1a1a1a;
+      color: #c0c0c0;
       font-family: 'Segoe UI', system-ui, sans-serif;
       display: flex;
       flex-direction: column;
@@ -22,7 +22,7 @@
     h1 {
       font-size: 1.6rem;
       letter-spacing: 0.15em;
-      color: #2a49f7;
+      color: #C94747;
       text-transform: uppercase;
     }
 
@@ -32,10 +32,10 @@
       gap: 16px 32px;
       align-items: center;
       justify-content: center;
-      background: #c0c0c0;
+      background: #2e2e2e;
       border-radius: 12px;
       padding: 16px 24px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
 
     .control-group {
@@ -47,7 +47,7 @@
 
     label {
       font-size: 0.8rem;
-      color: #213e4d;
+      color: #aaaaaa;
       text-transform: uppercase;
       letter-spacing: 0.08em;
     }
@@ -63,7 +63,7 @@
       width: 120px;
       height: 4px;
       border-radius: 2px;
-      background: #4a4a4d;
+      background: #555555;
       outline: none;
       cursor: pointer;
     }
@@ -72,14 +72,14 @@
       width: 14px;
       height: 14px;
       border-radius: 50%;
-      background: #0a0a0b;
+      background: #C94747;
     }
 
     .value-label {
       font-size: 0.85rem;
       min-width: 48px;
       text-align: right;
-      color: #191c2d;
+      color: #c0c0c0;
     }
 
     button {
@@ -95,9 +95,9 @@
     button:disabled { opacity: 0.4; cursor: not-allowed; }
 
     select {
-      background: #ffffff;
-      color: #050505;
-      border: 1px solid #c5cae9;
+      background: #3a3a3a;
+      color: #e0e0e0;
+      border: 1px solid #555555;
       border-radius: 8px;
       padding: 6px 10px;
       font-size: 0.88rem;
@@ -106,13 +106,17 @@
     }
     select:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    #btn-generate { background: #81d4fa; color: #37474f; }
-    #btn-solve    { background: #b3d9ff; color: #37474f; }
+    #btn-generate { background: #C94747; color: #f0f0f0; }
+    #btn-solve    { background: #9E3C3C; color: #f0f0f0; }
 
-    #maze-canvas {
+    #maze-canvas, #maze-canvas-3d {
       border-radius: 8px;
       display: block;
     }
+
+    #maze-canvas-3d { display: none; }
+
+    #btn-toggle-view { background: #555555; color: #f0f0f0; }
 
     #legend {
       display: flex;
@@ -120,7 +124,7 @@
       gap: 12px 24px;
       justify-content: center;
       font-size: 0.78rem;
-      color: #1b1f21;
+      color: #aaaaaa;
     }
 
     .legend-item {
@@ -147,6 +151,14 @@
       <div class="slider-row">
         <input type="range" id="size-slider" min="5" max="60" value="20" />
         <span class="value-label" id="size-label">20×20</span>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label for="openings-slider">Extra openings</label>
+      <div class="slider-row">
+        <input type="range" id="openings-slider" min="0" max="50" value="0" />
+        <span class="value-label" id="openings-label">0</span>
       </div>
     </div>
 
@@ -181,17 +193,19 @@
 
     <button id="btn-generate">Generate</button>
     <button id="btn-solve">Solve</button>
+    <button id="btn-toggle-view">Switch to 3D</button>
   </div>
 
   <canvas id="maze-canvas"></canvas>
+  <canvas id="maze-canvas-3d"></canvas>
 
   <div id="legend">
-    <div class="legend-item"><div class="dot" style="background:#76adc7"></div> Start</div>
-    <div class="legend-item"><div class="dot" style="background:#be6dcc"></div> End</div>
-    <div class="legend-item"><div class="dot" style="background:#5f93c7"></div> Frontier</div>
-    <div class="legend-item"><div class="dot" style="background:#fff59d"></div> Open</div>
-    <div class="legend-item"><div class="dot" style="background:#e57c86"></div> Closed</div>
-    <div class="legend-item"><div class="dot" style="background:#82c785"></div> Path</div>
+    <div class="legend-item"><div class="dot" style="background:#81d4fa"></div> Start</div>
+    <div class="legend-item"><div class="dot" style="background:#9E3C3C"></div> End</div>
+    <div class="legend-item"><div class="dot" style="background:#90caf9"></div> Frontier</div>
+    <div class="legend-item"><div class="dot" style="background:#9FCF65"></div> Open</div>
+    <div class="legend-item"><div class="dot" style="background:#65ADCF"></div> Closed</div>
+    <div class="legend-item"><div class="dot" style="background:#C94747"></div> Path</div>
   </div>
 
   <script type="module" src="/src/main.ts"></script>

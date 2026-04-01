@@ -3,16 +3,16 @@ import { EAST, NORTH, SOUTH, WEST } from '../core/types'
 import type { Cell } from '../core/types'
 
 const COLORS = {
-  background:  '#9f9f9f',
-  wall:        '#000000',
-  unvisited:   '#f0f0f0',
-  inMaze:      '#b5b5b5',
-  frontier:    '#5f93c7',   // pastel blue
-  open:        '#fff59d',   // pastel yellow
-  closed:      '#e57c86',   // pastel red
-  path:        '#82c785',   // pastel green
-  start:       '#76adc7',   // pastel light blue
-  end:         '#be6dcc',   // pastel purple
+  background:  '#C7C7C7',
+  wall:        '#1a1a1a',
+  unvisited:   '#7D7D7D',
+  inMaze:      '#B8B8B8',
+  frontier:    '#90caf9',
+  open:        '#9FCF65',
+  closed:      '#65ADCF',
+  path:        '#C94747',
+  start:       '#81d4fa',
+  end:         '#9E3C3C',
 }
 
 export class Renderer2D {
@@ -63,12 +63,13 @@ export class Renderer2D {
         const key = maze.cellKey({ row, col })
 
         // Cell fill
+        const pathFound = (options.path?.length ?? 0) > 0
         let fill = COLORS.unvisited
         if (options.path?.some(c => c.row === row && c.col === col)) fill = COLORS.path
-        else if (options.closed?.has(key)) fill = COLORS.closed
-        else if (options.open?.has(key))   fill = COLORS.open
+        else if (options.closed?.has(key))   fill = pathFound ? 'rgba(101,173,207,0.3)' : COLORS.closed
+        else if (options.open?.has(key))     fill = pathFound ? 'rgba(159,207,101,0.3)' : COLORS.open
         else if (options.frontier?.has(key)) fill = COLORS.frontier
-        else if (options.inMaze?.has(key)) fill = COLORS.inMaze
+        else if (options.inMaze?.has(key))   fill = COLORS.inMaze
 
         ctx.fillStyle = fill
         ctx.fillRect(x + 1, y + 1, cs - 1, cs - 1)
