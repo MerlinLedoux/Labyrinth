@@ -2,6 +2,7 @@ import { Maze } from './core/maze'
 import { EAST, SOUTH } from './core/types'
 import type { Cell } from './core/types'
 import { initCubeApp, resizeCubeCanvas } from './cube-app'
+import { initPlayApp, resizePlayCanvas, setPlayActive } from './play-app'
 import type { MazeGenerator } from './generators/generator'
 import { PrimGenerator } from './generators/prim'
 import { RecursiveBacktrackerGenerator } from './generators/recursive-backtracker'
@@ -238,28 +239,49 @@ btnToggle.addEventListener('click', () => {
 
 // ── Cube 3D section toggle ────────────────────────────────────────────────────
 const btnOpenCube  = document.getElementById('btn-open-cube')  as HTMLButtonElement
+const btnOpenPlay  = document.getElementById('btn-open-play')  as HTMLButtonElement
 const mainSection  = document.getElementById('main-section')   as HTMLDivElement
 const cubeSection  = document.getElementById('cube-section')   as HTMLDivElement
+const playSection  = document.getElementById('play-section')   as HTMLDivElement
 
+type AppMode = 'main' | 'cube' | 'play'
+let currentMode: AppMode = 'main'
 let cubeInitialized = false
-let inCubeMode = false
+let playInitialized = false
 
-btnOpenCube.addEventListener('click', () => {
-  inCubeMode = !inCubeMode
-  if (inCubeMode) {
-    mainSection.style.display = 'none'
-    cubeSection.style.display = 'flex'
-    btnOpenCube.textContent   = '2D Maze'
-    resizeCubeCanvas()
-    if (!cubeInitialized) {
-      cubeInitialized = true
-      initCubeApp()
-    }
-  } else {
-    cubeSection.style.display = 'none'
+function switchTo(mode: AppMode): void {
+  mainSection.style.display = 'none'
+  cubeSection.style.display = 'none'
+  playSection.style.display = 'none'
+  setPlayActive(false)
+
+  if (mode === 'main') {
     mainSection.style.display = 'flex'
     btnOpenCube.textContent   = 'Cube 3D'
+    btnOpenPlay.textContent   = 'Play'
+  } else if (mode === 'cube') {
+    cubeSection.style.display = 'flex'
+    btnOpenCube.textContent   = '← Back'
+    btnOpenPlay.textContent   = 'Play'
+    resizeCubeCanvas()
+    if (!cubeInitialized) { cubeInitialized = true; initCubeApp() }
+  } else if (mode === 'play') {
+    playSection.style.display = 'flex'
+    btnOpenPlay.textContent   = '← Back'
+    btnOpenCube.textContent   = 'Cube 3D'
+    resizePlayCanvas()
+    if (!playInitialized) { playInitialized = true; initPlayApp() }
+    setPlayActive(true)
   }
+  currentMode = mode
+}
+
+btnOpenCube.addEventListener('click', () => {
+  switchTo(currentMode === 'cube' ? 'main' : 'cube')
+})
+
+btnOpenPlay.addEventListener('click', () => {
+  switchTo(currentMode === 'play' ? 'main' : 'play')
 })
 
 window.addEventListener('resize', () => {

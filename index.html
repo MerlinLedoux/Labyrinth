@@ -142,11 +142,10 @@
       flex-shrink: 0;
     }
 
-    /* ── Bouton fixe Cube 3D ── */
-    #btn-open-cube {
+    /* ── Boutons fixes navigation ── */
+    #btn-open-cube, #btn-open-play {
       position: fixed;
       top: 16px;
-      left: 16px;
       z-index: 100;
       background: #2e2e2e;
       color: #C94747;
@@ -154,6 +153,8 @@
       padding: 7px 14px;
       font-size: 0.82rem;
     }
+    #btn-open-cube { left: 16px; }
+    #btn-open-play { right: 16px; }
 
     /* ── Section Cube 3D ── */
     #main-section {
@@ -195,13 +196,72 @@
 
     #btn-cube-gen   { background: #C94747; color: #f0f0f0; }
     #btn-cube-solve { background: #9E3C3C; color: #f0f0f0; }
-    #btn-cube-back  { background: #444444; color: #e0e0e0; }
+
+    /* ── Section Play ── */
+    #play-section {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      width: 100%;
+    }
+
+    #play-section h2 {
+      font-size: 1.3rem;
+      color: #C94747;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    #play-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 24px;
+      align-items: center;
+      justify-content: center;
+      background: #2e2e2e;
+      border-radius: 12px;
+      padding: 14px 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+
+    #play-steps-wrap {
+      font-size: 1rem;
+      color: #c0c0c0;
+      letter-spacing: 0.05em;
+    }
+
+    #play-steps {
+      color: #C94747;
+      font-weight: 700;
+      font-size: 1.2rem;
+    }
+
+    #play-canvas { border-radius: 8px; display: block; }
+
+    #btn-play-new { background: #C94747; color: #f0f0f0; }
+
+    #play-msg {
+      display: none;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #ff8a65;
+      letter-spacing: 0.08em;
+    }
+
+    #play-info {
+      font-size: 0.78rem;
+      color: #666;
+      text-align: center;
+      line-height: 1.6;
+    }
   </style>
 </head>
 <body>
 
-  <!-- Bouton fixe en haut à gauche -->
+  <!-- Boutons de navigation fixes -->
   <button id="btn-open-cube">Cube 3D</button>
+  <button id="btn-open-play">Play</button>
 
   <!-- ── Section principale (2D / 3D jardin) ── -->
   <div id="main-section">
@@ -303,6 +363,25 @@
     </div>
 
     <canvas id="canvas-cube"></canvas>
+  </div>
+
+  <!-- ── Section Play ── -->
+  <div id="play-section">
+    <h2 id="play-title">Labyrinth — Play</h2>
+
+    <div id="play-controls">
+      <div id="play-steps-wrap">Steps : <span id="play-steps">0</span></div>
+      <button id="btn-play-new">New Game</button>
+    </div>
+
+    <div id="play-msg"></div>
+    <canvas id="play-canvas"></canvas>
+
+    <div id="play-info">
+      Move : <strong>ZQSD</strong> or <strong>Arrow keys</strong> &nbsp;·&nbsp;
+      You only see cells within 3 steps &nbsp;·&nbsp;
+      Reach the <span style="color:#ff8a65">★</span> to win
+    </div>
   </div>
 
   <script type="module" src="/src/main.ts"></script>
