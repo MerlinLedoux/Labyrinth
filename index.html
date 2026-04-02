@@ -240,6 +240,8 @@
     #play-canvas { border-radius: 8px; display: block; }
 
     #btn-play-new { background: #C94747; color: #f0f0f0; }
+    #btn-play-ai  { background: #555555; color: #f0f0f0; }
+    #btn-play-ai.active { background: #9FCF65; color: #1a1a1a; }
 
     #play-msg {
       display: none;
@@ -372,6 +374,15 @@
     <div id="play-controls">
       <div id="play-steps-wrap">Steps : <span id="play-steps">0</span></div>
       <button id="btn-play-new">New Game</button>
+      <button id="btn-play-ai">Watch AI</button>
+      <div class="control-group">
+        <label for="ai-speed">AI speed</label>
+        <div class="slider-row">
+          <input type="range" id="ai-speed" min="10" max="500" value="150" />
+          <span class="value-label" id="ai-speed-label">150 ms</span>
+        </div>
+      </div>
+      <span id="ai-status" style="font-size:0.78rem;color:#666;">model not loaded</span>
     </div>
 
     <div id="play-msg"></div>

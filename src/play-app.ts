@@ -1,6 +1,7 @@
 import { Maze } from './core/maze'
 import { NORTH, SOUTH, EAST, WEST } from './core/types'
 import type { Cell } from './core/types'
+import { AIAgent } from './ai-agent'
 
 const MAZE_SIZE   = 15
 const EXTRA_OPEN  = 20
@@ -19,11 +20,15 @@ const COL = {
 }
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
-const canvas    = document.getElementById('play-canvas')    as HTMLCanvasElement
-const ctx       = canvas.getContext('2d')!
-const stepEl    = document.getElementById('play-steps')     as HTMLSpanElement
-const msgEl     = document.getElementById('play-msg')       as HTMLDivElement
-const btnNew    = document.getElementById('btn-play-new')   as HTMLButtonElement
+const canvas       = document.getElementById('play-canvas')     as HTMLCanvasElement
+const ctx          = canvas.getContext('2d')!
+const stepEl       = document.getElementById('play-steps')      as HTMLSpanElement
+const msgEl        = document.getElementById('play-msg')        as HTMLDivElement
+const btnNew       = document.getElementById('btn-play-new')    as HTMLButtonElement
+const btnAI        = document.getElementById('btn-play-ai')     as HTMLButtonElement
+const aiSpeedInput = document.getElementById('ai-speed')        as HTMLInputElement
+const aiSpeedLabel = document.getElementById('ai-speed-label')  as HTMLSpanElement
+const aiStatus     = document.getElementById('ai-status')       as HTMLSpanElement
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let maze    : Maze | null = null
@@ -31,8 +36,13 @@ let player  : Cell  = { row: 0,            col: 0            }
 let end     : Cell  = { row: MAZE_SIZE - 1, col: MAZE_SIZE - 1 }
 let steps   = 0
 let won     = false
-let revealed = new Set<number>()   // toutes les cases déjà vues
-export let playActive = false      // écoute clavier active seulement ici
+let revealed = new Set<number>()
+export let playActive = false
+
+// ── AI ────────────────────────────────────────────────────────────────────────
+const agent    = new AIAgent()
+let aiRunning  = false
+let aiRafId    = 0   // setTimeout handle
 
 // ── Visibilité en croix ───────────────────────────────────────────────────────
 /** Depuis `from`, regarde dans les 4 directions cardinales.
@@ -217,6 +227,7 @@ function newGame(): void {
   maze     = m
   player   = { row: 0, col: 0 }
   end      = { row: MAZE_SIZE - 1, col: MAZE_SIZE - 1 }
+  agent.reset(m)
   steps    = 0
   won      = false
   revealed = new Set<number>()
@@ -226,10 +237,52 @@ function newGame(): void {
   draw()
 }
 
+// ── Boucle IA ─────────────────────────────────────────────────────────────────
+function stopAI(): void {
+  clearTimeout(aiRafId)
+  aiRunning = false
+  btnAI.textContent = 'Watch AI'
+  btnAI.classList.remove('active')
+}
+
+function aiStep(): void {
+  if (!maze || won || !aiRunning) { stopAI(); return }
+  const dir = agent.pickAction(maze, player, end)
+  move(dir)
+  if (!won) aiRafId = window.setTimeout(aiStep, Number(aiSpeedInput.value))
+  else stopAI()
+}
+
+function toggleAI(): void {
+  if (!agent.isLoaded) {
+    aiStatus.textContent = 'model not loaded — run python/train.py then export_model.py'
+    return
+  }
+  if (aiRunning) {
+    stopAI()
+  } else {
+    aiRunning = true
+    btnAI.textContent = '⏹ Stop AI'
+    btnAI.classList.add('active')
+    aiStep()
+  }
+}
+
 // ── Init & resize ─────────────────────────────────────────────────────────────
 export function initPlayApp(): void {
-  btnNew.addEventListener('click', newGame)
+  btnNew.addEventListener('click', () => { stopAI(); newGame() })
+  btnAI.addEventListener('click', toggleAI)
+  aiSpeedInput.addEventListener('input', () => {
+    aiSpeedLabel.textContent = `${aiSpeedInput.value} ms`
+  })
   window.addEventListener('keydown', onKeyDown)
+
+  // Chargement silencieux du modèle
+  agent.load('/model_weights.json').then(ok => {
+    aiStatus.textContent = ok ? 'model ready ✓' : 'model not loaded'
+    aiStatus.style.color = ok ? '#9FCF65' : '#666'
+  })
+
   newGame()
 }
 
