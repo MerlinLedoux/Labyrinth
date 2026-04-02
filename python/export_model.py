@@ -23,6 +23,7 @@ import json
 import torch
 import torch.nn as nn
 from train import ActorCritic
+from maze_env import OBS_DIM
 
 MODEL_PATH  = sys.argv[1] if len(sys.argv) > 1 else "models/maze_ppo.pt"
 OUTPUT_PATH = "../public/model_weights.json"
@@ -51,7 +52,7 @@ def export(model_path: str, output_path: str) -> None:
     })
 
     payload = {
-        "obs_dim":    232,
+        "obs_dim":    OBS_DIM,
         "action_dim": 4,
         "activation": "relu",
         "layers":     layers,

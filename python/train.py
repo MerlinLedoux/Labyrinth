@@ -11,21 +11,23 @@ from torch.distributions import Categorical
 
 from maze_env import MazeEnv, OBS_DIM
 
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # ── Hyperparamètres ────────────────────────────────────────────────────────────
-TOTAL_STEPS   = 2_000_000
-N_STEPS       = 2048        # pas collectés avant chaque mise à jour
-N_EPOCHS      = 10          # passes PPO sur chaque rollout
+TOTAL_STEPS   = 500_000
+N_STEPS       = 512         # pas collectés avant chaque mise à jour
+N_EPOCHS      = 8           # passes PPO sur chaque rollout
 BATCH_SIZE    = 64
 LEARNING_RATE = 3e-4
 GAMMA         = 0.99
 GAE_LAMBDA    = 0.95        # λ pour le calcul des avantages (GAE)
 CLIP_EPS      = 0.2         # ε de clipping PPO
-ENT_COEF      = 0.01        # coefficient d'entropie (exploration)
+ENT_COEF      = 0.02        # coefficient d'entropie (plus d'exploration)
 VF_COEF       = 0.5         # coefficient de la perte critique
 MAX_GRAD_NORM = 0.5
-HIDDEN        = 128
-EVAL_EVERY    = 50_000
-EVAL_EPISODES = 20
+HIDDEN        = 128         # adapté à OBS_DIM=107 (10x10)
+EVAL_EVERY    = 20_000
+EVAL_EPISODES = 50
 SAVE_PATH     = "models/maze_ppo.pt"
 
 
@@ -88,9 +90,9 @@ def evaluate(model: ActorCritic, n_episodes: int = EVAL_EPISODES) -> float:
             obs, _ = env.reset()
             done   = False
             while not done:
-                obs_t        = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
+                obs_t        = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(DEVICE)
                 logits, _    = model(obs_t)
-                action       = logits.argmax(dim=1).item()
+                action       = torch.distributions.Categorical(logits=logits).sample().item()
                 obs, _, terminated, truncated, _ = env.step(action)
                 done = terminated or truncated
             if terminated:
@@ -105,19 +107,19 @@ def train():
     os.makedirs("models", exist_ok=True)
 
     env   = MazeEnv()
-    model = ActorCritic()
+    model = ActorCritic().to(DEVICE)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, eps=1e-5)
 
-    # Buffers du rollout (taille fixe N_STEPS)
-    obs_buf      = torch.zeros(N_STEPS, OBS_DIM)
-    actions_buf  = torch.zeros(N_STEPS, dtype=torch.long)
-    logprobs_buf = torch.zeros(N_STEPS)
-    rewards_buf  = torch.zeros(N_STEPS)
-    dones_buf    = torch.zeros(N_STEPS)
-    values_buf   = torch.zeros(N_STEPS)
+    # Buffers du rollout (taille fixe N_STEPS) — sur le device
+    obs_buf      = torch.zeros(N_STEPS, OBS_DIM,    device=DEVICE)
+    actions_buf  = torch.zeros(N_STEPS, dtype=torch.long, device=DEVICE)
+    logprobs_buf = torch.zeros(N_STEPS,              device=DEVICE)
+    rewards_buf  = torch.zeros(N_STEPS,              device=DEVICE)
+    dones_buf    = torch.zeros(N_STEPS,              device=DEVICE)
+    values_buf   = torch.zeros(N_STEPS,              device=DEVICE)
 
     obs, _  = env.reset()
-    obs_t   = torch.tensor(obs, dtype=torch.float32)
+    obs_t   = torch.tensor(obs, dtype=torch.float32, device=DEVICE)
 
     global_step   = 0
     episode_count = 0
@@ -125,6 +127,7 @@ def train():
     last_eval     = 0
 
     print(f"Démarrage PPO — {TOTAL_STEPS:,} pas, rollout={N_STEPS}, epochs={N_EPOCHS}")
+    print(f"Device : {DEVICE}")
 
     while global_step < TOTAL_STEPS:
 
@@ -150,7 +153,7 @@ def train():
                 next_obs, _ = env.reset()
                 episode_count += 1
 
-            obs_t = torch.tensor(next_obs, dtype=torch.float32)
+            obs_t = torch.tensor(next_obs, dtype=torch.float32, device=DEVICE)
 
         # ── Calcul des avantages (GAE) ─────────────────────────────────────────
         with torch.no_grad():
@@ -162,7 +165,7 @@ def train():
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         # ── Mise à jour PPO ───────────────────────────────────────────────────
-        indices = torch.randperm(N_STEPS)
+        indices = torch.randperm(N_STEPS, device=DEVICE)
         for _ in range(N_EPOCHS):
             for start in range(0, N_STEPS, BATCH_SIZE):
                 mb = indices[start:start + BATCH_SIZE]
