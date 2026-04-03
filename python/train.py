@@ -14,16 +14,17 @@ from maze_env import MazeEnv, OBS_DIM
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ── Hyperparamètres ────────────────────────────────────────────────────────────
-TOTAL_STEPS   = 500_000
-N_STEPS       = 512         # pas collectés avant chaque mise à jour
-N_EPOCHS      = 8           # passes PPO sur chaque rollout
+TOTAL_STEPS   = 2_000_000
+N_STEPS       = 2048        # ~5 épisodes par rollout (MAX_STEPS=400)
+N_EPOCHS      = 4           # moins de risque de policy collapse
 BATCH_SIZE    = 64
 LEARNING_RATE = 3e-4
-GAMMA         = 0.99
-GAE_LAMBDA    = 0.95        # λ pour le calcul des avantages (GAE)
-CLIP_EPS      = 0.2         # ε de clipping PPO
-ENT_COEF      = 0.02        # coefficient d'entropie (plus d'exploration)
-VF_COEF       = 0.5         # coefficient de la perte critique
+GAMMA         = 0.99        # credit assignment plus simple
+GAE_LAMBDA    = 0.95
+CLIP_EPS      = 0.2
+ENT_COEF_START = 0.05       # entropie initiale — exploration forte
+ENT_COEF_END   = 0.005      # entropie finale  — exploitation, évite les murs
+VF_COEF       = 0.5
 MAX_GRAD_NORM = 0.5
 HIDDEN        = 128         # adapté à OBS_DIM=107 (10x10)
 EVAL_EVERY    = 20_000
@@ -184,7 +185,8 @@ def train():
                 vf_loss  = nn.functional.mse_loss(new_values, returns[mb])
                 ent_loss = entropy.mean()
 
-                loss = pg_loss + VF_COEF * vf_loss - ENT_COEF * ent_loss
+                ent_coef = ENT_COEF_START + (ENT_COEF_END - ENT_COEF_START) * (global_step / TOTAL_STEPS)
+                loss = pg_loss + VF_COEF * vf_loss - ent_coef * ent_loss
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -195,7 +197,8 @@ def train():
         if global_step - last_eval >= EVAL_EVERY:
             last_eval = global_step
             win_rate  = evaluate(model)
-            print(f"  step {global_step:>9,} | épisodes={episode_count:>6,} | win rate={win_rate:.0%}")
+            ent_coef_now = ENT_COEF_START + (ENT_COEF_END - ENT_COEF_START) * (global_step / TOTAL_STEPS)
+            print(f"  step {global_step:>9,} | épisodes={episode_count:>6,} | win rate={win_rate:.0%} | ent={ent_coef_now:.4f}")
             if win_rate > best_win_rate:
                 best_win_rate = win_rate
                 torch.save(model.state_dict(), SAVE_PATH)

@@ -87,7 +87,7 @@ class MazeEnv(gym.Env):
         dr, dc = DELTA[d]
 
         if self.maze.has_wall(self.player_row, self.player_col, d):
-            reward = -1.0   # mur : pénalité, pas de déplacement
+            reward = -0.3   # mur : pénalité légère
         else:
             self.player_row += dr
             self.player_col += dc
@@ -95,17 +95,17 @@ class MazeEnv(gym.Env):
 
         self.step_count += 1
 
-        # Récompense de curiosité : +1.0 par nouvelle cellule découverte
+        # Bonus curiosité : signal secondaire
         cells_before = len(self.visited)
         self._update_memory()
         new_cells = len(self.visited) - cells_before
         if new_cells > 0:
-            reward += 0.5 * new_cells
+            reward += 0.2 * new_cells
 
         terminated = (self.player_row == self.end_row and
                       self.player_col == self.end_col)
         if terminated:
-            reward = 10.0
+            reward = 50.0
 
         truncated = self.step_count >= MAX_STEPS
 
