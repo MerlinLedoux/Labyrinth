@@ -32,7 +32,7 @@ OUTPUT_PATH = "../public/model_weights.json"
 def export(model_path: str, output_path: str) -> None:
     print(f"Chargement : {model_path}")
     model = ActorCritic()
-    model.load_state_dict(torch.load(model_path, map_location="cpu"))
+    model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
 
     layers = []

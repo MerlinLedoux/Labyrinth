@@ -3,8 +3,8 @@ import { NORTH, SOUTH, EAST, WEST } from './core/types'
 import type { Cell } from './core/types'
 import { AIAgent } from './ai-agent'
 
-const MAZE_SIZE   = 15
-const EXTRA_OPEN  = 20
+const MAZE_SIZE   = 10
+const EXTRA_OPEN  = 5
 const VIS_RANGE   = 3
 
 // ── Couleurs ──────────────────────────────────────────────────────────────────
@@ -246,9 +246,11 @@ function stopAI(): void {
 }
 
 function aiStep(): void {
+  console.log('Je suis la')
   if (!maze || won || !aiRunning) { stopAI(); return }
   const dir = agent.pickAction(maze, player, end)
   move(dir)
+  console.log(dir)
   if (!won) aiRafId = window.setTimeout(aiStep, Number(aiSpeedInput.value))
   else stopAI()
 }
@@ -256,12 +258,16 @@ function aiStep(): void {
 function toggleAI(): void {
   if (!agent.isLoaded) {
     aiStatus.textContent = 'model not loaded — run python/train.py then export_model.py'
+    console.log('ia pas load')
     return
   }
   if (aiRunning) {
     stopAI()
-  } else {
+    console.log('Stoping mouvements')
+  } 
+  else {
     aiRunning = true
+    console.log('Staarting mouvements')
     btnAI.textContent = '⏹ Stop AI'
     btnAI.classList.add('active')
     aiStep()

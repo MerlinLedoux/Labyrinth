@@ -170,8 +170,8 @@ class WatchApp:
         if self.paused:
             return
 
-        obs_t = torch.tensor(self.obs, dtype=torch.float32).unsqueeze(0)
         with torch.no_grad():
+            obs_t  = torch.tensor(self.obs, dtype=torch.float32).unsqueeze(0)
             logits, _ = self.model(obs_t)
             dist   = torch.distributions.Categorical(logits=logits)
             action = dist.sample().item()

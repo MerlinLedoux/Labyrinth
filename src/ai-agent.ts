@@ -25,6 +25,7 @@ const RAYS: [typeof NORTH | typeof SOUTH | typeof EAST | typeof WEST, number, nu
 
 // Bitmask observation : N=1, E=2, S=4, W=8 (convention utilisateur)
 const OBS_N = 1, OBS_E = 2, OBS_S = 4, OBS_W = 8
+const MAX_BITS = 15  // N+E+S+W = valeur max du bitmask
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Layer { w: number[][]; b: number[] }
@@ -52,7 +53,26 @@ const ACTIVATIONS = {
   tanh: Math.tanh,
 }
 
-/** Forward pass complet — retourne l'index de l'action (0=N,1=S,2=E,3=W). */
+/** Softmax : convertit les logits en probabilités. */
+function softmax(logits: number[]): number[] {
+  const max = Math.max(...logits)
+  const exps = logits.map(l => Math.exp(l - max))
+  const sum  = exps.reduce((a, b) => a + b, 0)
+  return exps.map(e => e / sum)
+}
+
+/** Échantillonne un index selon une distribution de probabilités. */
+function sampleCategorical(probs: number[]): number {
+  const r = Math.random()
+  let cum = 0
+  for (let i = 0; i < probs.length; i++) {
+    cum += probs[i]
+    if (r < cum) return i
+  }
+  return probs.length - 1
+}
+
+/** Forward pass — échantillonne une action selon la politique stochastique. */
 function forward(weights: ModelWeights, obs: number[]): number {
   const activate = ACTIVATIONS[weights.activation]
   let x = obs
@@ -60,7 +80,7 @@ function forward(weights: ModelWeights, obs: number[]): number {
     x = linear(layer, x).map(activate)
   }
   const logits = linear(weights.layers[weights.layers.length - 1], x)
-  return logits.indexOf(Math.max(...logits))
+  return sampleCategorical(softmax(logits))
 }
 
 // ── Bitmask murs d'une cellule (convention observation) ───────────────────────
@@ -139,7 +159,7 @@ export class AIAgent {
   private _memorize(maze: Maze, cell: Cell): void {
     const idx = cell.row * maze.cols + cell.col
     if (idx >= 0 && idx < this.memSize) {
-      this.memory[idx] = cellObsBits(maze, cell)
+      this.memory[idx] = cellObsBits(maze, cell) / MAX_BITS
     }
   }
 

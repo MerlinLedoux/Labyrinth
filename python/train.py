@@ -1,7 +1,8 @@
 """
 PPO (Proximal Policy Optimization) — implémentation pure PyTorch.
-Architecture : Actor-Critic  232 → 128 → 128, têtes acteur et critique séparées.
+Architecture : Actor-Critic  OBS_DIM → 128 → 128, têtes acteur et critique séparées.
 Algorithme   : PPO avec GAE, clipping et normalisation des avantages.
+Environnement: VecMazeEnv — 32 labyrinthes en parallèle (tenseurs CPU).
 """
 
 import torch
@@ -10,27 +11,26 @@ import torch.optim as optim
 from torch.distributions import Categorical
 
 from maze_env import MazeEnv, OBS_DIM
-
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from vec_maze_env import VecMazeEnv
 
 # ── Hyperparamètres ────────────────────────────────────────────────────────────
-TOTAL_STEPS   = 2_000_000
-N_STEPS       = 2048        # ~5 épisodes par rollout (MAX_STEPS=400)
-N_EPOCHS      = 4           # moins de risque de policy collapse
-BATCH_SIZE    = 64
-LEARNING_RATE = 3e-4
-GAMMA         = 0.99        # credit assignment plus simple
-GAE_LAMBDA    = 0.95
-CLIP_EPS      = 0.2
-ENT_COEF_START = 0.05       # entropie initiale — exploration forte
-ENT_COEF_END   = 0.005      # entropie finale  — exploitation, évite les murs
-VF_COEF       = 0.5
-MAX_GRAD_NORM = 0.5
-HIDDEN        = 128         # adapté à OBS_DIM=107 (10x10)
-EVAL_EVERY    = 20_000
-EVAL_EPISODES = 50
-SAVE_PATH     = "models/maze_ppo.pt"
-
+N_ENVS         = 32           # environnements parallèles
+TOTAL_STEPS    = 2_000_000    # pas totaux (= transitions × N_ENVS)
+N_STEPS        = 64           # pas par env par rollout  (64×32 = 2048)
+N_EPOCHS       = 4
+BATCH_SIZE     = 64
+LEARNING_RATE  = 3e-4
+GAMMA          = 0.99
+GAE_LAMBDA     = 0.95
+CLIP_EPS       = 0.2
+ENT_COEF_START = 0.05
+ENT_COEF_END   = 0.015
+VF_COEF        = 0.5
+MAX_GRAD_NORM  = 0.5
+HIDDEN         = 128
+EVAL_EVERY     = 20_000
+EVAL_EPISODES  = 50
+SAVE_PATH      = "models/maze_ppo.pt"
 
 # ── Réseau Actor-Critic ────────────────────────────────────────────────────────
 class ActorCritic(nn.Module):
@@ -42,8 +42,8 @@ class ActorCritic(nn.Module):
             nn.Linear(hidden, hidden),
             nn.ReLU(),
         )
-        self.actor  = nn.Linear(hidden, action_dim)   # logits de politique
-        self.critic = nn.Linear(hidden, 1)             # estimation de valeur V(s)
+        self.actor  = nn.Linear(hidden, action_dim)
+        self.critic = nn.Linear(hidden, 1)
 
     def forward(self, x: torch.Tensor):
         h = self.shared(x)
@@ -51,8 +51,8 @@ class ActorCritic(nn.Module):
 
     def get_action(self, obs: torch.Tensor):
         logits, value = self(obs)
-        dist    = Categorical(logits=logits)
-        action  = dist.sample()
+        dist   = Categorical(logits=logits)
+        action = dist.sample()
         return action, dist.log_prob(action), dist.entropy(), value
 
     def evaluate_actions(self, obs: torch.Tensor, actions: torch.Tensor):
@@ -61,28 +61,29 @@ class ActorCritic(nn.Module):
         return dist.log_prob(actions), dist.entropy(), value
 
 
-# ── GAE (Generalized Advantage Estimation) ────────────────────────────────────
+# ── GAE vectorisé (T, N) ──────────────────────────────────────────────────────
 def compute_gae(
-    rewards: torch.Tensor,
-    values:  torch.Tensor,
-    dones:   torch.Tensor,
-    last_value: torch.Tensor,
+    rewards:    torch.Tensor,   # (T, N)
+    values:     torch.Tensor,   # (T, N)
+    dones:      torch.Tensor,   # (T, N)
+    last_value: torch.Tensor,   # (N,)
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    advantages = torch.zeros_like(rewards)
-    last_gae   = 0.0
-    for t in reversed(range(len(rewards))):
-        next_val         = last_value if t == len(rewards) - 1 else values[t + 1]
+    T, N = rewards.shape
+    advantages = torch.zeros(T, N)
+    last_gae   = torch.zeros(N)
+
+    for t in reversed(range(T)):
+        next_val          = last_value if t == T - 1 else values[t + 1]
         next_non_terminal = 1.0 - dones[t]
         delta    = rewards[t] + GAMMA * next_val * next_non_terminal - values[t]
         last_gae = delta + GAMMA * GAE_LAMBDA * next_non_terminal * last_gae
         advantages[t] = last_gae
-    returns = advantages + values
-    return advantages, returns
+
+    return advantages, advantages + values
 
 
-# ── Évaluation ────────────────────────────────────────────────────────────────
+# ── Évaluation (single env, stochastique) ────────────────────────────────────
 def evaluate(model: ActorCritic, n_episodes: int = EVAL_EPISODES) -> float:
-    """Taux de réussite avec politique greedy (argmax)."""
     env  = MazeEnv()
     wins = 0
     model.eval()
@@ -91,9 +92,9 @@ def evaluate(model: ActorCritic, n_episodes: int = EVAL_EPISODES) -> float:
             obs, _ = env.reset()
             done   = False
             while not done:
-                obs_t        = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(DEVICE)
-                logits, _    = model(obs_t)
-                action       = torch.distributions.Categorical(logits=logits).sample().item()
+                obs_t     = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
+                logits, _ = model(obs_t)
+                action    = Categorical(logits=logits).sample().item()
                 obs, _, terminated, truncated, _ = env.step(action)
                 done = terminated or truncated
             if terminated:
@@ -102,91 +103,100 @@ def evaluate(model: ActorCritic, n_episodes: int = EVAL_EPISODES) -> float:
     return wins / n_episodes
 
 
-# ── Entraînement ──────────────────────────────────────────────────────────────
+# ── Entraînement vectorisé ────────────────────────────────────────────────────
 def train():
     import os
     os.makedirs("models", exist_ok=True)
 
-    env   = MazeEnv()
-    model = ActorCritic().to(DEVICE)
+    env   = VecMazeEnv(n_envs=N_ENVS, device="cpu")
+    model = ActorCritic()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, eps=1e-5)
 
-    # Buffers du rollout (taille fixe N_STEPS) — sur le device
-    obs_buf      = torch.zeros(N_STEPS, OBS_DIM,    device=DEVICE)
-    actions_buf  = torch.zeros(N_STEPS, dtype=torch.long, device=DEVICE)
-    logprobs_buf = torch.zeros(N_STEPS,              device=DEVICE)
-    rewards_buf  = torch.zeros(N_STEPS,              device=DEVICE)
-    dones_buf    = torch.zeros(N_STEPS,              device=DEVICE)
-    values_buf   = torch.zeros(N_STEPS,              device=DEVICE)
+    # Buffers : (N_STEPS, N_ENVS, ...)
+    obs_buf      = torch.zeros(N_STEPS, N_ENVS, OBS_DIM)
+    actions_buf  = torch.zeros(N_STEPS, N_ENVS, dtype=torch.long)
+    logprobs_buf = torch.zeros(N_STEPS, N_ENVS)
+    rewards_buf  = torch.zeros(N_STEPS, N_ENVS)
+    dones_buf    = torch.zeros(N_STEPS, N_ENVS)
+    values_buf   = torch.zeros(N_STEPS, N_ENVS)
 
-    obs, _  = env.reset()
-    obs_t   = torch.tensor(obs, dtype=torch.float32, device=DEVICE)
-
+    obs_t         = env.reset()                 # (N_ENVS, OBS_DIM)
     global_step   = 0
     episode_count = 0
     best_win_rate = 0.0
     last_eval     = 0
 
-    print(f"Démarrage PPO — {TOTAL_STEPS:,} pas, rollout={N_STEPS}, epochs={N_EPOCHS}")
-    print(f"Device : {DEVICE}")
+    print(f"Démarrage PPO vectorisé — {TOTAL_STEPS:,} transitions, "
+          f"{N_ENVS} envs, rollout={N_STEPS}×{N_ENVS}={N_STEPS*N_ENVS}")
 
     while global_step < TOTAL_STEPS:
 
-        # ── Collecte d'un rollout ──────────────────────────────────────────────
+        # ── Collecte du rollout ───────────────────────────────────────────────
+        model.eval()
         for step in range(N_STEPS):
-            global_step += 1
-
             with torch.no_grad():
-                action, logprob, _, value = model.get_action(obs_t.unsqueeze(0))
+                logits, value = model(obs_t)           # (N, 4), (N,)
+                dist    = Categorical(logits=logits)
+                action  = dist.sample()                # (N,)
+                logprob = dist.log_prob(action)        # (N,)
 
             obs_buf[step]      = obs_t
             actions_buf[step]  = action
             logprobs_buf[step] = logprob
-            values_buf[step]   = value.squeeze()
+            values_buf[step]   = value
 
-            next_obs, reward, terminated, truncated, _ = env.step(action.item())
-            done = terminated or truncated
+            next_obs, reward, terminated, truncated = env.step(action)
+            done = (terminated | truncated).float()
 
             rewards_buf[step] = reward
-            dones_buf[step]   = float(done)
+            dones_buf[step]   = done
 
-            if done:
-                next_obs, _ = env.reset()
-                episode_count += 1
+            episode_count += int(done.sum().item())
+            global_step   += N_ENVS
+            obs_t          = next_obs
 
-            obs_t = torch.tensor(next_obs, dtype=torch.float32, device=DEVICE)
+        model.train()
 
-        # ── Calcul des avantages (GAE) ─────────────────────────────────────────
+        # ── GAE ───────────────────────────────────────────────────────────────
         with torch.no_grad():
-            _, last_value = model(obs_t.unsqueeze(0))
+            _, last_value = model(obs_t)               # (N,)
 
         advantages, returns = compute_gae(
-            rewards_buf, values_buf, dones_buf, last_value.squeeze()
+            rewards_buf, values_buf, dones_buf, last_value
         )
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+        # Aplatir (T, N) → (T*N,)
+        flat_obs      = obs_buf.view(-1, OBS_DIM)
+        flat_actions  = actions_buf.view(-1)
+        flat_logprobs = logprobs_buf.view(-1)
+        flat_advs     = advantages.view(-1)
+        flat_returns  = returns.view(-1)
+
+        flat_advs = (flat_advs - flat_advs.mean()) / (flat_advs.std() + 1e-8)
 
         # ── Mise à jour PPO ───────────────────────────────────────────────────
-        indices = torch.randperm(N_STEPS, device=DEVICE)
+        n_samples = N_STEPS * N_ENVS
+        indices   = torch.randperm(n_samples)
+        ent_coef  = ENT_COEF_START + (ENT_COEF_END - ENT_COEF_START) * (global_step / TOTAL_STEPS)
+
         for _ in range(N_EPOCHS):
-            for start in range(0, N_STEPS, BATCH_SIZE):
+            for start in range(0, n_samples, BATCH_SIZE):
                 mb = indices[start:start + BATCH_SIZE]
 
                 new_logprobs, entropy, new_values = model.evaluate_actions(
-                    obs_buf[mb], actions_buf[mb]
+                    flat_obs[mb], flat_actions[mb]
                 )
 
-                ratio    = (new_logprobs - logprobs_buf[mb]).exp()
-                mb_advs  = advantages[mb]
-                pg_loss  = torch.max(
+                ratio   = (new_logprobs - flat_logprobs[mb]).exp()
+                mb_advs = flat_advs[mb]
+                pg_loss = torch.max(
                     -mb_advs * ratio,
                     -mb_advs * ratio.clamp(1 - CLIP_EPS, 1 + CLIP_EPS),
                 ).mean()
 
-                vf_loss  = nn.functional.mse_loss(new_values, returns[mb])
-                ent_loss = entropy.mean()
-
-                ent_coef = ENT_COEF_START + (ENT_COEF_END - ENT_COEF_START) * (global_step / TOTAL_STEPS)
-                loss = pg_loss + VF_COEF * vf_loss - ent_coef * ent_loss
+                loss = (pg_loss
+                        + VF_COEF * nn.functional.mse_loss(new_values, flat_returns[mb])
+                        - ent_coef * entropy.mean())
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -197,19 +207,18 @@ def train():
         if global_step - last_eval >= EVAL_EVERY:
             last_eval = global_step
             win_rate  = evaluate(model)
-            ent_coef_now = ENT_COEF_START + (ENT_COEF_END - ENT_COEF_START) * (global_step / TOTAL_STEPS)
-            print(f"  step {global_step:>9,} | épisodes={episode_count:>6,} | win rate={win_rate:.0%} | ent={ent_coef_now:.4f}")
+            print(f"  step {global_step:>9,} | episodes={episode_count:>7,} | "
+                  f"win rate={win_rate:.0%} | ent={ent_coef:.4f}")
             if win_rate > best_win_rate:
                 best_win_rate = win_rate
                 torch.save(model.state_dict(), SAVE_PATH)
-                print(f"             → nouveau meilleur modèle ({win_rate:.0%})")
+                print(f"             -> nouveau meilleur modele ({win_rate:.0%})")
 
-    # Sauvegarde finale
     if best_win_rate == 0.0:
         torch.save(model.state_dict(), SAVE_PATH)
 
-    print(f"\nTerminé. Meilleur win rate : {best_win_rate:.0%}")
-    print(f"Modèle : {SAVE_PATH}")
+    print(f"\nTermine. Meilleur win rate : {best_win_rate:.0%}")
+    print(f"Modele : {SAVE_PATH}")
     print("Lance maintenant : python export_model.py")
 
 
