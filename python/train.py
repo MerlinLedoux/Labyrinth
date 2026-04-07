@@ -1,59 +1,90 @@
 """
-PPO (Proximal Policy Optimization) — implémentation pure PyTorch.
-Architecture : Actor-Critic  OBS_DIM → 128 → 128, têtes acteur et critique séparées.
-Algorithme   : PPO avec GAE, clipping et normalisation des avantages.
-Environnement: VecMazeEnv — 32 labyrinthes en parallèle (tenseurs CPU).
+train.py — PPO "Memory-Augmented Navigator"
+
+Architecture Actor-Critic :
+  Branche spatiale : 280 → Dense(512) + ReLU + LayerNorm → Dense(256) + ReLU
+  Branche nav      :   4 → Dense(32)  + ReLU
+  Fusion           : cat(256, 32) = 288
+  Acteur           : Dense(64) + ReLU → Dense(4)
+  Critique         : Dense(64) + ReLU → Dense(1)
+
+Tout tourne sur GPU si disponible — aucun transfert CPU↔GPU pendant l'entraînement.
 """
 
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Categorical
 
-from maze_env import MazeEnv, OBS_DIM
-from vec_maze_env import VecMazeEnv
+from maze_env import VecMazeEnv, OBS_DIM, CELL_SIZE, WALL_SIZE
+
+# ── Device ────────────────────────────────────────────────────────────────────
+# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = "cpu"
+
 
 # ── Hyperparamètres ────────────────────────────────────────────────────────────
-N_ENVS         = 32           # environnements parallèles
-TOTAL_STEPS    = 2_000_000    # pas totaux (= transitions × N_ENVS)
-N_STEPS        = 64           # pas par env par rollout  (64×32 = 2048)
+N_ENVS         = 32
+N_STEPS        = 128            # pas par env par rollout  (128×32 = 4096)
 N_EPOCHS       = 4
-BATCH_SIZE     = 64
-LEARNING_RATE  = 3e-4
+BATCH_SIZE     = 128
+TOTAL_STEPS    = 3_000_000
+LEARNING_RATE  = 2.5e-4
 GAMMA          = 0.99
 GAE_LAMBDA     = 0.95
 CLIP_EPS       = 0.2
 ENT_COEF_START = 0.05
-ENT_COEF_END   = 0.015
+ENT_COEF_END   = 0.01
 VF_COEF        = 0.5
 MAX_GRAD_NORM  = 0.5
-HIDDEN         = 128
 EVAL_EVERY     = 20_000
-EVAL_EPISODES  = 50
+EVAL_EPISODES  = 100
 SAVE_PATH      = "models/maze_ppo.pt"
 
-# ── Réseau Actor-Critic ────────────────────────────────────────────────────────
-class ActorCritic(nn.Module):
-    def __init__(self, obs_dim: int = OBS_DIM, action_dim: int = 4, hidden: int = HIDDEN):
+SPATIAL_DIM = CELL_SIZE + WALL_SIZE   # 280
+NAV_DIM     = 4                       # pos(2) + goal(2)
+
+
+# ── Architecture ───────────────────────────────────────────────────────────────
+class MemoryNavigator(nn.Module):
+    def __init__(self):
         super().__init__()
-        self.shared = nn.Sequential(
-            nn.Linear(obs_dim, hidden),
+
+        self.spatial = nn.Sequential(
+            nn.Linear(SPATIAL_DIM, 512),
             nn.ReLU(),
-            nn.Linear(hidden, hidden),
+            nn.LayerNorm(512),
+            nn.Linear(512, 256),
             nn.ReLU(),
         )
-        self.actor  = nn.Linear(hidden, action_dim)
-        self.critic = nn.Linear(hidden, 1)
 
-    def forward(self, x: torch.Tensor):
-        h = self.shared(x)
-        return self.actor(h), self.critic(h).squeeze(-1)
+        self.nav = nn.Sequential(
+            nn.Linear(NAV_DIM, 32),
+            nn.ReLU(),
+        )
 
-    def get_action(self, obs: torch.Tensor):
-        logits, value = self(obs)
-        dist   = Categorical(logits=logits)
-        action = dist.sample()
-        return action, dist.log_prob(action), dist.entropy(), value
+        self.actor = nn.Sequential(
+            nn.Linear(288, 64),
+            nn.ReLU(),
+            nn.Linear(64, 4),
+        )
+
+        self.critic = nn.Sequential(
+            nn.Linear(288, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+        )
+
+    def _fuse(self, obs: torch.Tensor) -> torch.Tensor:
+        return torch.cat([
+            self.spatial(obs[..., :SPATIAL_DIM]),
+            self.nav(obs[..., SPATIAL_DIM:]),
+        ], dim=-1)
+
+    def forward(self, obs: torch.Tensor):
+        f = self._fuse(obs)
+        return self.actor(f), self.critic(f).squeeze(-1)
 
     def evaluate_actions(self, obs: torch.Tensor, actions: torch.Tensor):
         logits, value = self(obs)
@@ -61,165 +92,179 @@ class ActorCritic(nn.Module):
         return dist.log_prob(actions), dist.entropy(), value
 
 
-# ── GAE vectorisé (T, N) ──────────────────────────────────────────────────────
+# ── GAE ────────────────────────────────────────────────────────────────────────
 def compute_gae(
-    rewards:    torch.Tensor,   # (T, N)
-    values:     torch.Tensor,   # (T, N)
-    dones:      torch.Tensor,   # (T, N)
-    last_value: torch.Tensor,   # (N,)
+    rewards: torch.Tensor,    # (T, N)
+    values:  torch.Tensor,    # (T, N)
+    dones:   torch.Tensor,    # (T, N)
+    last_v:  torch.Tensor,    # (N,)
 ) -> tuple[torch.Tensor, torch.Tensor]:
     T, N = rewards.shape
-    advantages = torch.zeros(T, N)
-    last_gae   = torch.zeros(N)
+    dev  = rewards.device
+    adv  = torch.zeros(T, N, device=dev)
+    gae  = torch.zeros(N, device=dev)
 
     for t in reversed(range(T)):
-        next_val          = last_value if t == T - 1 else values[t + 1]
-        next_non_terminal = 1.0 - dones[t]
-        delta    = rewards[t] + GAMMA * next_val * next_non_terminal - values[t]
-        last_gae = delta + GAMMA * GAE_LAMBDA * next_non_terminal * last_gae
-        advantages[t] = last_gae
+        nxt       = last_v if t == T - 1 else values[t + 1]
+        nonterminal = 1.0 - dones[t]
+        delta     = rewards[t] + GAMMA * nxt * nonterminal - values[t]
+        gae       = delta + GAMMA * GAE_LAMBDA * nonterminal * gae
+        adv[t]    = gae
 
-    return advantages, advantages + values
+    return adv, adv + values
 
 
-# ── Évaluation (single env, stochastique) ────────────────────────────────────
-def evaluate(model: ActorCritic, n_episodes: int = EVAL_EPISODES) -> float:
-    env  = MazeEnv()
-    wins = 0
+# ── Évaluation (tous les épisodes en parallèle, zéro sync GPU dans la boucle) ──
+_eval_env: "VecMazeEnv | None" = None   # créé une seule fois
+
+def evaluate(model: MemoryNavigator) -> tuple[float, float]:
+    from maze_env import MAX_STEPS as _MAX
+    global _eval_env
+    if _eval_env is None:
+        _eval_env = VecMazeEnv(n_envs=EVAL_EPISODES, device=str(DEVICE))
+    env         = _eval_env
+    obs         = env.reset()
+    wins        = torch.zeros(EVAL_EPISODES, device=DEVICE)
+    ep_rewards  = torch.zeros(EVAL_EPISODES, device=DEVICE)
+    done        = torch.zeros(EVAL_EPISODES, dtype=torch.bool, device=DEVICE)
+
     model.eval()
     with torch.no_grad():
-        for _ in range(n_episodes):
-            obs, _ = env.reset()
-            done   = False
-            while not done:
-                obs_t     = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
-                logits, _ = model(obs_t)
-                action    = Categorical(logits=logits).sample().item()
-                obs, _, terminated, truncated, _ = env.step(action)
-                done = terminated or truncated
-            if terminated:
-                wins += 1
+        for _ in range(_MAX):
+            logits, _           = model(obs)
+            actions             = Categorical(logits=logits).sample()
+            obs, reward, term, trunc = env.step(actions)
+            ep_rewards         += (~done).float() * reward   # cumul tant que non terminé
+            wins               += (~done & term).float()
+            done               |= term | trunc
+
     model.train()
-    return wins / n_episodes
+    win_rate   = float(wins.sum().item()) / EVAL_EPISODES
+    mean_rew   = float(ep_rewards.mean().item())
+    return win_rate, mean_rew
 
 
-# ── Entraînement vectorisé ────────────────────────────────────────────────────
+# ── Entraînement ───────────────────────────────────────────────────────────────
 def train():
-    import os
     os.makedirs("models", exist_ok=True)
+    print(f"Device : {DEVICE}")
 
-    env   = VecMazeEnv(n_envs=N_ENVS, device="cpu")
-    model = ActorCritic()
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, eps=1e-5)
+    env   = VecMazeEnv(n_envs=N_ENVS, device=str(DEVICE))
+    model = MemoryNavigator().to(DEVICE)
+    opt   = optim.Adam(model.parameters(), lr=LEARNING_RATE, eps=1e-5)
 
-    # Buffers : (N_STEPS, N_ENVS, ...)
-    obs_buf      = torch.zeros(N_STEPS, N_ENVS, OBS_DIM)
-    actions_buf  = torch.zeros(N_STEPS, N_ENVS, dtype=torch.long)
-    logprobs_buf = torch.zeros(N_STEPS, N_ENVS)
-    rewards_buf  = torch.zeros(N_STEPS, N_ENVS)
-    dones_buf    = torch.zeros(N_STEPS, N_ENVS)
-    values_buf   = torch.zeros(N_STEPS, N_ENVS)
+    n_updates = (TOTAL_STEPS // (N_STEPS * N_ENVS)) * N_EPOCHS
+    scheduler = optim.lr_scheduler.LinearLR(
+        opt, start_factor=1.0, end_factor=0.0, total_iters=n_updates
+    )
 
-    obs_t         = env.reset()                 # (N_ENVS, OBS_DIM)
+    # Buffers sur DEVICE — zéro transfert pendant la collecte
+    obs_buf  = torch.zeros(N_STEPS, N_ENVS, OBS_DIM,        device=DEVICE)
+    act_buf  = torch.zeros(N_STEPS, N_ENVS, dtype=torch.long, device=DEVICE)
+    lp_buf   = torch.zeros(N_STEPS, N_ENVS,                  device=DEVICE)
+    rew_buf  = torch.zeros(N_STEPS, N_ENVS,                  device=DEVICE)
+    done_buf = torch.zeros(N_STEPS, N_ENVS,                  device=DEVICE)
+    val_buf  = torch.zeros(N_STEPS, N_ENVS,                  device=DEVICE)
+
+    obs_t         = env.reset()
     global_step   = 0
-    episode_count = 0
-    best_win_rate = 0.0
+    ep_count      = 0
+    best_wr       = 0.0
     last_eval     = 0
 
-    print(f"Démarrage PPO vectorisé — {TOTAL_STEPS:,} transitions, "
-          f"{N_ENVS} envs, rollout={N_STEPS}×{N_ENVS}={N_STEPS*N_ENVS}")
+    print(f"Démarrage — {TOTAL_STEPS:,} transitions | "
+          f"{N_ENVS} envs | rollout {N_STEPS}×{N_ENVS}={N_STEPS*N_ENVS:,}")
 
     while global_step < TOTAL_STEPS:
 
         # ── Collecte du rollout ───────────────────────────────────────────────
         model.eval()
-        for step in range(N_STEPS):
-            with torch.no_grad():
-                logits, value = model(obs_t)           # (N, 4), (N,)
-                dist    = Categorical(logits=logits)
-                action  = dist.sample()                # (N,)
-                logprob = dist.log_prob(action)        # (N,)
+        with torch.no_grad():
+            for t in range(N_STEPS):
+                logits, value = model(obs_t)
+                dist   = Categorical(logits=logits)
+                action = dist.sample()
 
-            obs_buf[step]      = obs_t
-            actions_buf[step]  = action
-            logprobs_buf[step] = logprob
-            values_buf[step]   = value
+                obs_buf[t]  = obs_t
+                act_buf[t]  = action
+                lp_buf[t]   = dist.log_prob(action)
+                val_buf[t]  = value
 
-            next_obs, reward, terminated, truncated = env.step(action)
-            done = (terminated | truncated).float()
+                obs_t, reward, terminated, truncated = env.step(action)
+                done = (terminated | truncated).float()
 
-            rewards_buf[step] = reward
-            dones_buf[step]   = done
+                rew_buf[t]  = reward
+                done_buf[t] = done
 
-            episode_count += int(done.sum().item())
-            global_step   += N_ENVS
-            obs_t          = next_obs
+                ep_count    += int(done.sum().item())
+                global_step += N_ENVS
 
         model.train()
 
         # ── GAE ───────────────────────────────────────────────────────────────
         with torch.no_grad():
-            _, last_value = model(obs_t)               # (N,)
+            _, last_v = model(obs_t)
 
-        advantages, returns = compute_gae(
-            rewards_buf, values_buf, dones_buf, last_value
-        )
+        adv, ret = compute_gae(rew_buf, val_buf, done_buf, last_v)
 
         # Aplatir (T, N) → (T*N,)
-        flat_obs      = obs_buf.view(-1, OBS_DIM)
-        flat_actions  = actions_buf.view(-1)
-        flat_logprobs = logprobs_buf.view(-1)
-        flat_advs     = advantages.view(-1)
-        flat_returns  = returns.view(-1)
+        n_samples  = N_STEPS * N_ENVS
+        flat_obs   = obs_buf.view(n_samples, OBS_DIM)
+        flat_act   = act_buf.view(n_samples)
+        flat_lp    = lp_buf.view(n_samples)
+        flat_adv   = adv.view(n_samples)
+        flat_ret   = ret.view(n_samples)
 
-        flat_advs = (flat_advs - flat_advs.mean()) / (flat_advs.std() + 1e-8)
+        flat_adv = (flat_adv - flat_adv.mean()) / (flat_adv.std() + 1e-8)
 
         # ── Mise à jour PPO ───────────────────────────────────────────────────
-        n_samples = N_STEPS * N_ENVS
-        indices   = torch.randperm(n_samples)
-        ent_coef  = ENT_COEF_START + (ENT_COEF_END - ENT_COEF_START) * (global_step / TOTAL_STEPS)
+        idx      = torch.randperm(n_samples, device=DEVICE)
+        ent_coef = (ENT_COEF_START
+                    + (ENT_COEF_END - ENT_COEF_START)
+                    * (global_step / TOTAL_STEPS))
 
         for _ in range(N_EPOCHS):
             for start in range(0, n_samples, BATCH_SIZE):
-                mb = indices[start:start + BATCH_SIZE]
+                mb = idx[start:start + BATCH_SIZE]
 
-                new_logprobs, entropy, new_values = model.evaluate_actions(
-                    flat_obs[mb], flat_actions[mb]
+                new_lp, entropy, new_val = model.evaluate_actions(
+                    flat_obs[mb], flat_act[mb]
                 )
 
-                ratio   = (new_logprobs - flat_logprobs[mb]).exp()
-                mb_advs = flat_advs[mb]
+                ratio   = (new_lp - flat_lp[mb]).exp()
+                mb_adv  = flat_adv[mb]
                 pg_loss = torch.max(
-                    -mb_advs * ratio,
-                    -mb_advs * ratio.clamp(1 - CLIP_EPS, 1 + CLIP_EPS),
+                    -mb_adv * ratio,
+                    -mb_adv * ratio.clamp(1 - CLIP_EPS, 1 + CLIP_EPS),
                 ).mean()
 
-                loss = (pg_loss
-                        + VF_COEF * nn.functional.mse_loss(new_values, flat_returns[mb])
-                        - ent_coef * entropy.mean())
+                vf_loss = nn.functional.mse_loss(new_val, flat_ret[mb])
+                loss    = pg_loss + VF_COEF * vf_loss - ent_coef * entropy.mean()
 
-                optimizer.zero_grad()
+                opt.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM)
-                optimizer.step()
+                opt.step()
+
+            scheduler.step()
 
         # ── Évaluation périodique ─────────────────────────────────────────────
         if global_step - last_eval >= EVAL_EVERY:
-            last_eval = global_step
-            win_rate  = evaluate(model)
-            print(f"  step {global_step:>9,} | episodes={episode_count:>7,} | "
-                  f"win rate={win_rate:.0%} | ent={ent_coef:.4f}")
-            if win_rate > best_win_rate:
-                best_win_rate = win_rate
+            last_eval    = global_step
+            wr, mean_rew = evaluate(model)
+            lr           = opt.param_groups[0]["lr"]
+            print(f"  step {global_step:>9,} | ep={ep_count:>6,} | "
+                  f"win={wr:.0%} | rew={mean_rew:+.1f} | ent={ent_coef:.4f} | lr={lr:.2e}")
+            if wr > best_wr:
+                best_wr = wr
                 torch.save(model.state_dict(), SAVE_PATH)
-                print(f"             -> nouveau meilleur modele ({win_rate:.0%})")
+                print(f"             -> meilleur modèle ({wr:.0%})")
 
-    if best_win_rate == 0.0:
+    if best_wr == 0.0:
         torch.save(model.state_dict(), SAVE_PATH)
 
-    print(f"\nTermine. Meilleur win rate : {best_win_rate:.0%}")
-    print(f"Modele : {SAVE_PATH}")
-    print("Lance maintenant : python export_model.py")
+    print(f"\nTerminé. Meilleur win rate : {best_wr:.0%}")
+    print(f"Modèle sauvegardé : {SAVE_PATH}")
 
 
 if __name__ == "__main__":
